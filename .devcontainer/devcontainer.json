@@ -1,26 +1,13 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/dotnet
 {
-	"name": "C# (.NET)",
+	"name": "Raspberry Pi Web App (.NET)",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	"image": "mcr.microsoft.com/devcontainers/dotnet:1-8.0",
 	"features": {
-		"ghcr.io/devcontainers/features/azure-cli:1": {
-			"version": "latest",
-			"bicepVersion": "latest"
-		},
 		"ghcr.io/devcontainers/features/github-cli:1": {
 			"installDirectlyFromGitHubRelease": true,
 			"version": "latest"
-		},
-		"ghcr.io/jlaundry/devcontainer-features/azure-functions-core-tools:1": {
-			"version": "latest"
-		},
-		"ghcr.io/r3dpoint/devcontainer-features/tailwindcss-standalone-cli:1": {
-			"version": "latest"
-		},
-		"ghcr.io/azure/azure-dev/azd:0": {
-			"version": "stable"
 		},
 		"ghcr.io/devcontainers/features/node:1": {
 			"version": "22"
@@ -28,17 +15,29 @@
 	},
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "npm install -g @azure/static-web-apps-cli azurite && bash tools/init-local-settings.sh",
+	"postCreateCommand": "dotnet restore api/api.csproj",
 
 	// Configure tool-specific properties.
 	"customizations": {
 		"vscode": {
 			"extensions": [
 				"ms-dotnettools.csdevkit",
-				"github.vscode-github-actions",
-				"ms-azuretools.vscode-azurefunctions",
-				"Azurite.azurite"
+				"ms-dotnettools.csharp",
+				"github.vscode-github-actions"
 			]
+		}
+	},
+
+	// Forward ports for local development
+	"forwardPorts": [5000, 5001],
+	"portsAttributes": {
+		"5000": {
+			"label": "Application (HTTP)",
+			"onAutoForward": "notify"
+		},
+		"5001": {
+			"label": "Application (HTTPS)",
+			"onAutoForward": "notify"
 		}
 	}
 

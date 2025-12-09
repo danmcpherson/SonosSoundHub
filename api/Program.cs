@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SonosSoundHub.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +12,15 @@ builder.Services.AddControllers()
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddMemoryCache();
+
+// Add HttpClient for soco-cli communication
+builder.Services.AddHttpClient<SonosCommandService>();
+builder.Services.AddHttpClient<MacroService>();
+
+// Add Sonos services
+builder.Services.AddSingleton<SocoCliService>();
+builder.Services.AddScoped<SonosCommandService>();
+builder.Services.AddScoped<MacroService>();
 
 // Configure SQLite
 var dataDirectory = builder.Configuration["DataDirectory"] ?? "data";

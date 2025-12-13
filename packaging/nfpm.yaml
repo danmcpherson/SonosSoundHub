@@ -14,6 +14,9 @@ contents:
   - src: "publish/$RID/**"
     dst: /opt/sonos-sound-hub
     type: file
+  - src: "packaging/sonos-sound-hub.service"
+    dst: /etc/systemd/system/sonos-sound-hub.service
+    type: file
   - src: /opt/sonos-sound-hub/api
     dst: /usr/local/bin/sonos-sound-hub
     type: symlink

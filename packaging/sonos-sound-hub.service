@@ -1,0 +1,17 @@
+[Unit]
+Description=Sonos Sound Hub
+Documentation=https://github.com/danmcpherson/SonosSoundHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sonos-sound-hub
+ExecStart=/opt/sonos-sound-hub/api
+Restart=always
+RestartSec=10
+User=pi
+Environment=ASPNETCORE_ENVIRONMENT=Production
+
+[Install]
+WantedBy=multi-user.target

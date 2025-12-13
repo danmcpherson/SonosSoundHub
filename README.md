@@ -13,11 +13,23 @@ echo "deb [arch=${ARCH} signed-by=/usr/share/keyrings/sonos-sound-hub.gpg] https
 sudo apt-get update
 sudo apt-get install sonos-sound-hub
 # Install soco-cli: see https://github.com/avantrec/soco-cli for installation instructions
+```
+
+**Run at startup (optional):**
+```bash
+sudo systemctl enable sonos-sound-hub
+sudo systemctl start sonos-sound-hub
+```
+
+**Run in foreground:**
+```bash
 sonos-sound-hub
 ```
+
 - The script auto-detects `dpkg --print-architecture` (arm64 or armhf) and uses the matching repo build.
 - Binary is self-contained; no .NET runtime needed.
 - Install [soco-cli](https://github.com/avantrec/soco-cli) separately (required dependency).
+- A systemd service file is installed automatically; use `systemctl enable/start` to run at startup.
 
 ### Manual install (clone & run)
 
@@ -136,41 +148,10 @@ dotnet run
    ```
 
 4. Optional: systemd service for auto-start
-   ```ini
-   [Unit]
-   Description=Sonos Sound Hub
-   After=network.target
-
-   [Service]
-   WorkingDirectory=/home/pi/sonos-sound-hub
-   ExecStart=/home/pi/.dotnet/dotnet /home/pi/sonos-sound-hub/api.dll
-   Restart=always
-   RestartSec=10
-   User=pi
-   Environment=ASPNETCORE_ENVIRONMENT=Production
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
    ```bash
-   sudo tee /etc/systemd/system/sonos-sound-hub.service >/dev/null <<'EOF'
-   [Unit]
-   Description=Sonos Sound Hub
-   After=network.target
-
-   [Service]
-   WorkingDirectory=/home/pi/sonos-sound-hub
-   ExecStart=/home/pi/.dotnet/dotnet /home/pi/sonos-sound-hub/api.dll
-   Restart=always
-   RestartSec=10
-   User=pi
-   Environment=ASPNETCORE_ENVIRONMENT=Production
-
-   [Install]
-   WantedBy=multi-user.target
-   EOF
    sudo systemctl enable sonos-sound-hub
    sudo systemctl start sonos-sound-hub
+   sudo systemctl status sonos-sound-hub
    ```
 
 ## Features
@@ -212,6 +193,7 @@ dotnet run
 - **APT key errors:** Ensure you've run the full install script including the `gpg --dearmor` step. If you see NO_PUBKEY errors, re-add the key.
 - **Package not found:** Run `sudo apt-get update` and verify your architecture matches (armhf for 32-bit, arm64 for 64-bit). Check with `dpkg --print-architecture`.
 - **Binary not found after install:** The symlink should be at `/usr/local/bin/sonos-sound-hub`. Run `hash -r` to refresh your shell's command cache.
+- **Service not starting:** Check logs with `sudo journalctl -u sonos-sound-hub -f`. Ensure soco-cli is installed and the binary has execute permissions.
 - **Port in use (5000 or 8000):** `lsof -i :5000` or `lsof -i :8000`, then stop the conflicting process or change the port in config.
 - **Speakers not discovered:** ensure the Pi is on the same LAN as Sonos, power-cycle a speaker, or run `sonos-discover`.
 - **Refresh cached speaker list:** if `SocoCli:UseLocalCache` is enabled, use the **Rediscover** button in the UI to run `/rediscover` (this overwrites the local speaker cache file and replaces the cached list).

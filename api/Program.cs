@@ -1,13 +1,16 @@
 using Microsoft.EntityFrameworkCore;
 using SonosSoundHub.Services;
 
-var builder = WebApplication.CreateBuilder(args);
-
-// Listen on all interfaces for Pi deployment and set content/web roots to the install dir
 var baseDir = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = baseDir,
+    WebRootPath = Path.Combine(baseDir, "wwwroot")
+});
+
+// Listen on all interfaces for Pi deployment
 builder.WebHost.UseUrls("http://0.0.0.0:5000");
-builder.WebHost.UseContentRoot(baseDir);
-builder.WebHost.UseWebRoot(Path.Combine(baseDir, "wwwroot"));
 
 // Add services
 builder.Services.AddControllers()

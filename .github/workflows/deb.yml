@@ -92,6 +92,13 @@ jobs:
       APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
       APT_GPG_KEY_ID: ${{ secrets.APT_GPG_KEY_ID }}
     steps:
+      - name: Prepare GPG home (optional)
+        if: env.APT_GPG_PRIVATE_KEY != ''
+        run: |
+          export GNUPGHOME=/tmp/gnupg
+          mkdir -p "$GNUPGHOME"
+          chmod 700 "$GNUPGHOME"
+
       - name: Download armhf
         uses: actions/download-artifact@v4
         with:
@@ -138,7 +145,6 @@ jobs:
         env:
           GNUPGHOME: /tmp/gnupg
         run: |
-          mkdir -p "$GNUPGHOME"
           printf '%s' "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
           gpg --batch --yes --pinentry-mode loopback --passphrase "$APT_GPG_PASSPHRASE" \
             -u "$APT_GPG_KEY_ID" --output dists/stable/InRelease --clearsign dists/stable/Release

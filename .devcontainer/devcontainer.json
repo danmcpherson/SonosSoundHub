@@ -4,18 +4,7 @@
 	"name": "Raspberry Pi Web App (.NET)",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	"image": "mcr.microsoft.com/devcontainers/dotnet:1-8.0",
-	"features": {
-		"ghcr.io/devcontainers/features/github-cli:1": {
-			"installDirectlyFromGitHubRelease": true,
-			"version": "latest"
-		},
-		"ghcr.io/devcontainers/features/node:1": {
-			"version": "22"
-		},
-		"ghcr.io/devcontainers/features/python:1": {
-			"version": "3.11"
-		}
-	},
+	"features": {},
 
 	// Use 'postCreateCommand' to run commands after the container is created.
 	"postCreateCommand": "dotnet restore api/api.csproj && sudo apt-get update && sudo apt-get install -y pipx && pipx install soco-cli",
@@ -32,7 +21,7 @@
 	},
 
 	// Forward ports for local development
-	"forwardPorts": [5000, 5001, 8000, 8080],
+	"forwardPorts": [5000, 5001, 8000],
 	"portsAttributes": {
 		"5000": {
 			"label": "Application (HTTP)",
@@ -45,10 +34,6 @@
 		"8000": {
 			"label": "Soco-CLI HTTP API",
 			"onAutoForward": "silent"
-		},
-		"8080": {
-			"label": "Application Server",
-			"onAutoForward": "notify"
 		}
 	}
 

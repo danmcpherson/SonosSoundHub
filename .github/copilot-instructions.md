@@ -9,6 +9,9 @@
 - **Hosting**: Self-hosted on Raspberry Pi using Kestrel
 - **Architecture**: No view framework (React, Vue, etc.), all runs locally
 
+## Sonos Control Source
+- **SoCo CLI**: Always consider wrapping or invoking functionality from the official SoCo CLI tool (`https://github.com/avantrec/soco-cli`), especially commands that translate well to a web interface (queue control, favorites, grouping, playback, and diagnostics). Prefer reusing those commands via the backend rather than re-implementing Sonos control logic from scratch.
+
 ## Code Style Preferences
 
 ### General Philosophy

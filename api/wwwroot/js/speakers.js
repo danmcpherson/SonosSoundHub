@@ -55,32 +55,10 @@ window.speakers = {
         try {
             const speakerNames = await api.getSpeakers();
             this.currentSpeakers = speakerNames;
-            
-            if (speakerNames.length === 0) {
-                grid.innerHTML = `
-                    <div class="info-message">
-                        <p>No speakers found. Make sure your Sonos speakers are powered on and connected to the network.</p>
-                        <button class="btn btn-primary" onclick="speakers.discover()">Try Again</button>
-                    </div>
-                `;
-                updateStatus(false, 'No speakers');
-                return;
-            }
-
-            grid.innerHTML = '';
-            speakerNames.forEach(name => {
-                const card = createSpeakerCard(name);
-                grid.appendChild(card);
+            this.renderDiscoveryResult(speakerNames, {
+                toastMessage: `Found ${speakerNames.length} speaker${speakerNames.length !== 1 ? 's' : ''}`,
+                retryAction: 'speakers.discover()'
             });
-
-            // Start updating speaker info
-            this.startUpdates();
-            updateStatus(true, `${speakerNames.length} speaker${speakerNames.length > 1 ? 's' : ''}`);
-
-            // Update speaker selectors in other tabs
-            this.updateSpeakerSelectors();
-
-            showToast(`Found ${speakerNames.length} speaker(s)`, 'success');
         } catch (error) {
             console.error('Failed to discover speakers:', error);
             grid.innerHTML = `
@@ -91,6 +69,105 @@ window.speakers = {
             `;
             updateStatus(false, 'Discovery failed');
             showToast('Failed to discover speakers', 'error');
+        }
+    },
+
+    /**
+     * Rediscover speakers and overwrite the local cache file.
+     */
+    async rediscover() {
+        const grid = document.getElementById('speakers-grid');
+        const rediscoverBtn = document.getElementById('rediscover-btn');
+        const shouldRediscover = window.confirm('Rediscover speakers? This will overwrite the existing local speaker cache file.');
+        if (!shouldRediscover) {
+            return;
+        }
+
+        this.setButtonLoading(rediscoverBtn, true, 'Rediscovering...');
+        grid.innerHTML = '<div class="loading-message"><div class="spinner"></div><p>Rediscovering speakers...</p></div>';
+        updateStatus(false, 'Rediscovering...');
+
+        try {
+            const speakerNames = await api.rediscoverSpeakers();
+            this.currentSpeakers = speakerNames;
+            this.renderDiscoveryResult(speakerNames, {
+                toastMessage: `Rediscovered ${speakerNames.length} speaker${speakerNames.length !== 1 ? 's' : ''}`,
+                retryAction: 'speakers.rediscover()',
+                emptyMessage: 'No speakers were found during rediscovery. Check power and network, then try again.'
+            });
+        } catch (error) {
+            console.error('Failed to rediscover speakers:', error);
+            grid.innerHTML = `
+                <div class="info-message">
+                    <p>Error rediscovering speakers: ${error.message}</p>
+                    <button class="btn btn-primary" onclick="speakers.rediscover()">Try Again</button>
+                </div>
+            `;
+            updateStatus(false, 'Rediscovery failed');
+            showToast('Failed to rediscover speakers', 'error');
+        }
+        finally {
+            this.setButtonLoading(rediscoverBtn, false, 'Rediscover');
+        }
+    },
+
+    /**
+     * Render speaker grid and status after a discovery-style operation.
+     * @param {string[]} speakerNames
+     * @param {{toastMessage?: string, retryAction?: string, emptyMessage?: string}} options
+     */
+    renderDiscoveryResult(speakerNames, options = {}) {
+        const grid = document.getElementById('speakers-grid');
+
+        if (speakerNames.length === 0) {
+            grid.innerHTML = `
+                <div class="info-message">
+                    <p>${options.emptyMessage || 'No speakers found. Make sure your Sonos speakers are powered on and connected to the network.'}</p>
+                    <button class="btn btn-primary" onclick="${options.retryAction || 'speakers.discover()'}">Try Again</button>
+                </div>
+            `;
+            updateStatus(false, 'No speakers');
+            return;
+        }
+
+        grid.innerHTML = '';
+        speakerNames.forEach(name => {
+            const card = createSpeakerCard(name);
+            grid.appendChild(card);
+        });
+
+        this.startUpdates();
+        updateStatus(true, `${speakerNames.length} speaker${speakerNames.length > 1 ? 's' : ''}`);
+        this.updateSpeakerSelectors();
+
+        if (options.toastMessage) {
+            showToast(options.toastMessage, 'success');
+        }
+    },
+
+    /**
+     * Toggle loading state on a button with inline spinner.
+     * @param {HTMLButtonElement|null} button
+     * @param {boolean} isLoading
+     * @param {string} label
+     */
+    setButtonLoading(button, isLoading, label) {
+        if (!button) return;
+
+        if (isLoading) {
+            button.dataset.originalContent = button.innerHTML;
+            button.disabled = true;
+            button.classList.add('is-loading');
+            button.innerHTML = `<span class="button-spinner" aria-hidden="true"></span><span>${label}</span>`;
+        } else {
+            const original = button.dataset.originalContent;
+            if (original) {
+                button.innerHTML = original;
+            } else {
+                button.innerHTML = label;
+            }
+            button.disabled = false;
+            button.classList.remove('is-loading');
         }
     },
 

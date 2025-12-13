@@ -27,10 +27,7 @@ Follow these steps on a Raspberry Pi OS 64-bit install (Bullseye/Bookworm):
    ```
 
 3. **Install soco-cli (Sonos bridge)**
-   ```bash
-   pipx install soco-cli
-   sonos-http-api-server --version
-   ```
+   - Prerequisite; follow the official installation guidance at https://github.com/avantrec/soco-cli.
 
 4. **Clone and run**
    ```bash
@@ -39,6 +36,35 @@ Follow these steps on a Raspberry Pi OS 64-bit install (Bullseye/Bookworm):
    dotnet restore
    dotnet run
    ```
+
+### Install from a release artifact (easiest on Pi)
+
+1. Grab the latest tarball from GitHub Releases (choose `linux-arm64` for 64-bit Pi OS, `linux-arm` for 32-bit).
+   ```bash
+   curl -LO https://github.com/danmcpherson/SonosSoundHub/releases/latest/download/sonos-sound-hub-linux-arm64.tar.gz
+   ```
+2. Extract and run (assumes .NET 8 runtime and soco-cli are already installed):
+   ```bash
+   mkdir -p ~/sonos-sound-hub
+   tar -xzf sonos-sound-hub-linux-arm64.tar.gz -C ~/sonos-sound-hub
+   cd ~/sonos-sound-hub
+   ./api
+   ```
+
+### Install via apt (Pi-native, when repo is available)
+
+Once an apt repo is published with `.deb` packages:
+
+```bash
+curl -fsSL https://example.com/sonos-sound-hub.gpg | sudo tee /etc/apt/trusted.gpg.d/sonos-sound-hub.gpg >/dev/null
+echo "deb [arch=arm64] https://example.com/apt stable main" | sudo tee /etc/apt/sources.list.d/sonos-sound-hub.list
+sudo apt update
+sudo apt install sonos-sound-hub
+```
+
+- Replace `example.com` with the hosted repo URL.
+- Use `arch=armhf` for 32-bit Pi OS.
+- soco-cli remains a prerequisite; install it separately before running the app.
 
 5. **Open the UI**
    - On the Pi: `http://localhost:5000`
@@ -187,7 +213,8 @@ dotnet run
 
 - **Port in use (5000 or 8000):** `lsof -i :5000` or `lsof -i :8000`, then stop the conflicting process or change the port in config.
 - **Speakers not discovered:** ensure the Pi is on the same LAN as Sonos, power-cycle a speaker, or run `sonos-discover`.
-- **Permission errors with pipx:** rerun `pipx install soco-cli --force`.
+- **Refresh cached speaker list:** if `SocoCli:UseLocalCache` is enabled, use the **Rediscover** button in the UI to run `/rediscover` (this overwrites the local speaker cache file and replaces the cached list).
+- **Permission errors with pipx:** check the soco-cli installation notes for your platform.
 - **Database issues:** delete `api/data/app.db` to regenerate (data loss) or confirm `DataDirectory` points to a writable path.
 
 ## License

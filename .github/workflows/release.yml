@@ -47,10 +47,9 @@ jobs:
 
       - name: Build .deb for ${{ matrix.rid }} (tag builds only)
         if: startsWith(github.ref, 'refs/tags/')
-        env:
-          VERSION_RAW: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
           ARCH="${{ matrix.rid }}"
           if [ "$ARCH" = "linux-arm64" ]; then
             DEB_ARCH=arm64
@@ -60,8 +59,6 @@ jobs:
 
           PKG_ROOT=pkg-${DEB_ARCH}
           mkdir -p "$PKG_ROOT/DEBIAN" "$PKG_ROOT/opt/sonos-sound-hub" "$PKG_ROOT/usr/bin"
-
-          VERSION="${VERSION_RAW#v}"
 
           cat > "$PKG_ROOT/DEBIAN/control" <<CONTROL
 Package: sonos-sound-hub
@@ -76,14 +73,14 @@ CONTROL
 
           cp -a publish/${{ matrix.rid }}/* "$PKG_ROOT/opt/sonos-sound-hub/"
 
-          cat > "$PKG_ROOT/usr/bin/sonos-sound-hub" <<'LAUNCH'
+          cat > "$PKG_ROOT/usr/bin/sonos-sound-hub" <<'LAUNCHER'
 #!/usr/bin/env bash
 exec /opt/sonos-sound-hub/api "$@"
-LAUNCH
+LAUNCHER
           chmod +x "$PKG_ROOT/usr/bin/sonos-sound-hub"
 
           dpkg-deb --build "$PKG_ROOT"
-          mv "${PKG_ROOT}.deb" "sonos-sound-hub-${DEB_ARCH}.deb"
+          mv ${PKG_ROOT}.deb sonos-sound-hub-${DEB_ARCH}.deb
 
       - name: Upload .deb artifact ${{ matrix.rid }} (tag builds only)
         if: startsWith(github.ref, 'refs/tags/')

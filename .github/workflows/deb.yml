@@ -1,0 +1,166 @@
+name: debian-package
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: debian-package
+  cancel-in-progress: true
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - rid: linux-arm
+            arch: armhf
+          - rid: linux-arm64
+            arch: arm64
+    env:
+      RID: ${{ matrix.rid }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+          else
+            echo "VERSION=0.0.0-${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+          fi
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore api/api.csproj
+
+      - name: Publish ${{ env.RID }}
+        run: |
+          dotnet publish api/api.csproj \
+            -c Release \
+            -r ${{ env.RID }} \
+            --self-contained false \
+            -p:PublishSingleFile=true \
+            -p:DebugType=embedded \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -o publish/${{ env.RID }}
+
+      - name: Install nfpm
+        run: |
+          curl -sSL https://github.com/goreleaser/nfpm/releases/download/v2.38.0/nfpm_2.38.0_Linux_x86_64.tar.gz -o /tmp/nfpm.tar.gz
+          sudo tar -C /usr/local/bin -xzf /tmp/nfpm.tar.gz nfpm
+
+      - name: Ensure dist folder
+        run: mkdir -p dist
+
+      - name: Build .deb
+        run: |
+          nfpm package \
+            --config packaging/nfpm.yaml \
+            --packager deb \
+            --target dist/sonos-sound-hub_${{ env.VERSION }}_${{ env.ARCH }}.deb
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ env.ARCH }}
+          path: dist/sonos-sound-hub_${{ env.VERSION }}_${{ env.ARCH }}.deb
+
+  apt-repo:
+    needs: build-deb
+    runs-on: ubuntu-latest
+    env:
+      APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+      APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+      APT_GPG_KEY_ID: ${{ secrets.APT_GPG_KEY_ID }}
+    steps:
+      - name: Download armhf
+        uses: actions/download-artifact@v4
+        with:
+          name: deb-armhf
+          path: repo/pool/main
+
+      - name: Download arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: deb-arm64
+          path: repo/pool/main
+
+      - name: Install repo tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev apt-utils gnupg
+
+      - name: Build Packages index
+        working-directory: repo
+        run: |
+          mkdir -p dists/stable/main/binary-armhf dists/stable/main/binary-arm64
+          dpkg-scanpackages --arch armhf pool/main > dists/stable/main/binary-armhf/Packages
+          dpkg-scanpackages --arch arm64 pool/main > dists/stable/main/binary-arm64/Packages
+          gzip -k dists/stable/main/binary-armhf/Packages
+          gzip -k dists/stable/main/binary-arm64/Packages
+
+      - name: Build Release file
+        working-directory: repo
+        run: |
+          cat > dists/stable/Release <<'EOF'
+Origin: Sonos Sound Hub
+Label: Sonos Sound Hub
+Suite: stable
+Codename: stable
+Architectures: armhf arm64
+Components: main
+Description: Sonos Sound Hub APT repo
+EOF
+          apt-ftparchive release dists/stable >> dists/stable/Release
+
+      - name: Sign repo (optional)
+        if: env.APT_GPG_PRIVATE_KEY != ''
+        working-directory: repo
+        env:
+          GNUPGHOME: /tmp/gnupg
+        run: |
+          mkdir -p "$GNUPGHOME"
+          printf '%s' "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$APT_GPG_PASSPHRASE" \
+            -u "$APT_GPG_KEY_ID" --output dists/stable/InRelease --clearsign dists/stable/Release
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$APT_GPG_PASSPHRASE" \
+            -u "$APT_GPG_KEY_ID" --output dists/stable/Release.gpg --detach-sign dists/stable/Release
+
+      - name: Export public key (optional)
+        if: env.APT_GPG_PRIVATE_KEY != ''
+        working-directory: repo
+        env:
+          GNUPGHOME: /tmp/gnupg
+        run: |
+          gpg --batch --yes --export --armor "$APT_GPG_KEY_ID" > KEY.gpg
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: repo
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: gh-pages
+          folder: repo

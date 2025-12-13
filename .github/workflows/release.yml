@@ -48,7 +48,7 @@ jobs:
       - name: Build .deb for ${{ matrix.rid }} (tag builds only)
         if: startsWith(github.ref, 'refs/tags/')
         env:
-          VERSION: "${GITHUB_REF_NAME#v}"
+          VERSION_RAW: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           ARCH="${{ matrix.rid }}"
@@ -61,7 +61,9 @@ jobs:
           PKG_ROOT=pkg-${DEB_ARCH}
           mkdir -p "$PKG_ROOT/DEBIAN" "$PKG_ROOT/opt/sonos-sound-hub" "$PKG_ROOT/usr/bin"
 
-          cat > "$PKG_ROOT/DEBIAN/control" <<EOF
+          VERSION="${VERSION_RAW#v}"
+
+          cat > "$PKG_ROOT/DEBIAN/control" <<CONTROL
 Package: sonos-sound-hub
 Version: ${VERSION:-0.0.0}
 Section: utils
@@ -70,18 +72,18 @@ Architecture: ${DEB_ARCH}
 Maintainer: danmcpherson <maintainer@example.com>
 Depends: dotnet-runtime-8.0
 Description: Self-hosted Sonos control UI/API for Raspberry Pi
-EOF
+CONTROL
 
           cp -a publish/${{ matrix.rid }}/* "$PKG_ROOT/opt/sonos-sound-hub/"
 
-          cat > "$PKG_ROOT/usr/bin/sonos-sound-hub" <<'EOF'
+          cat > "$PKG_ROOT/usr/bin/sonos-sound-hub" <<'LAUNCH'
 #!/usr/bin/env bash
 exec /opt/sonos-sound-hub/api "$@"
-EOF
+LAUNCH
           chmod +x "$PKG_ROOT/usr/bin/sonos-sound-hub"
 
           dpkg-deb --build "$PKG_ROOT"
-          mv ${PKG_ROOT}.deb sonos-sound-hub-${DEB_ARCH}.deb
+          mv "${PKG_ROOT}.deb" "sonos-sound-hub-${DEB_ARCH}.deb"
 
       - name: Upload .deb artifact ${{ matrix.rid }} (tag builds only)
         if: startsWith(github.ref, 'refs/tags/')

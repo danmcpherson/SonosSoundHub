@@ -31,6 +31,16 @@ public class MacroController : ControllerBase
     }
 
     /// <summary>
+    /// Gets macros file information
+    /// </summary>
+    [HttpGet("info")]
+    public IActionResult GetMacrosInfo()
+    {
+        var info = _macroService.GetMacrosFileInfo();
+        return Ok(info);
+    }
+
+    /// <summary>
     /// Gets a specific macro by name
     /// </summary>
     [HttpGet("{name}")]

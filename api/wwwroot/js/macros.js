@@ -96,6 +96,26 @@ window.macros = {
     commands: {},
 
     /**
+     * Loads macros file info and displays path
+     */
+    async loadFileInfo() {
+        try {
+            const response = await fetch(`${api.baseUrl}/api/macro/info`);
+            if (response.ok) {
+                const info = await response.json();
+                const fileInfoDiv = document.getElementById('macros-file-info');
+                const filePathSpan = document.getElementById('macros-file-path');
+                if (fileInfoDiv && filePathSpan && info.filePath) {
+                    filePathSpan.textContent = info.filePath;
+                    fileInfoDiv.style.display = 'block';
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load macros file info:', error);
+        }
+    },
+
+    /**
      * Initialize commands from categories
      */
     initCommands() {
@@ -116,6 +136,9 @@ window.macros = {
         list.innerHTML = '<div class="loading-message"><div class="spinner"></div><p>Loading macros...</p></div>';
 
         try {
+            // Load macros file info
+            this.loadFileInfo();
+            
             const macroList = await api.getMacros();
             this.currentMacros = macroList;
 

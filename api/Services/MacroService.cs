@@ -62,6 +62,18 @@ public class MacroService
     }
 
     /// <summary>
+    /// Gets information about the macros file
+    /// </summary>
+    public object GetMacrosFileInfo()
+    {
+        return new
+        {
+            FilePath = _macrosFilePath,
+            FileExists = File.Exists(_macrosFilePath)
+        };
+    }
+
+    /// <summary>
     /// Gets all macros from the file
     /// </summary>
     public async Task<List<Macro>> GetAllMacrosAsync()

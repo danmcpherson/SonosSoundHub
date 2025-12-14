@@ -54,6 +54,7 @@ public class SocoCliService
         var possiblePaths = new[]
         {
             Path.Combine(homeDir, ".local", "bin", "sonos-http-api-server"),
+            Path.Combine(homeDir, ".local", "share", "pipx", "venvs", "soco-cli", "bin", "sonos-http-api-server"),
             "/usr/local/bin/sonos-http-api-server",
             "/opt/homebrew/bin/sonos-http-api-server",
         };

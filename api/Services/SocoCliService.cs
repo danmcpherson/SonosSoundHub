@@ -49,15 +49,36 @@ public class SocoCliService
     /// </summary>
     private string GetExecutablePath()
     {
-        // Check common pipx installation locations
-        var homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var possiblePaths = new[]
+        // Check if explicitly configured
+        var configuredPath = _configuration.GetValue<string>("SocoCli:ExecutablePath");
+        if (!string.IsNullOrEmpty(configuredPath) && File.Exists(configuredPath))
         {
-            Path.Combine(homeDir, ".local", "bin", "sonos-http-api-server"),
-            Path.Combine(homeDir, ".local", "share", "pipx", "venvs", "soco-cli", "bin", "sonos-http-api-server"),
-            "/usr/local/bin/sonos-http-api-server",
-            "/opt/homebrew/bin/sonos-http-api-server",
-        };
+            _logger.LogInformation("Using configured sonos-http-api-server at: {Path}", configuredPath);
+            return configuredPath;
+        }
+
+        // Build list of possible paths
+        var possiblePaths = new List<string>();
+        
+        // Check current user's home directory
+        var homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrEmpty(homeDir))
+        {
+            possiblePaths.Add(Path.Combine(homeDir, ".local", "bin", "sonos-http-api-server"));
+            possiblePaths.Add(Path.Combine(homeDir, ".local", "share", "pipx", "venvs", "soco-cli", "bin", "sonos-http-api-server"));
+        }
+        
+        // When running as a service, also check common user home directories
+        var commonUsers = new[] { "danmc", "pi", "sonos" };
+        foreach (var user in commonUsers)
+        {
+            possiblePaths.Add(Path.Combine("/home", user, ".local", "bin", "sonos-http-api-server"));
+            possiblePaths.Add(Path.Combine("/home", user, ".local", "share", "pipx", "venvs", "soco-cli", "bin", "sonos-http-api-server"));
+        }
+        
+        // System-wide locations
+        possiblePaths.Add("/usr/local/bin/sonos-http-api-server");
+        possiblePaths.Add("/opt/homebrew/bin/sonos-http-api-server");
 
         foreach (var path in possiblePaths)
         {

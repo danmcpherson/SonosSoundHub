@@ -82,16 +82,70 @@ public class SocoCliService
 
         foreach (var path in possiblePaths)
         {
-            if (File.Exists(path))
+            try
             {
-                _logger.LogInformation("Found sonos-http-api-server at: {Path}", path);
-                return path;
+                // Check if file exists (File.Exists follows symlinks)
+                if (File.Exists(path))
+                {
+                    _logger.LogInformation("Found sonos-http-api-server at: {Path}", path);
+                    return path;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("Error checking path {Path}: {Error}", path, ex.Message);
             }
         }
 
-        // Return the command name and hope it's in PATH
-        _logger.LogWarning("Could not find sonos-http-api-server in common locations, falling back to PATH");
+        // Log all paths checked for debugging
+        _logger.LogWarning("Could not find sonos-http-api-server. Checked paths: {Paths}", string.Join(", ", possiblePaths));
+        
+        // Try to resolve from PATH using 'which' command
+        var pathResolved = ResolveFromPath("sonos-http-api-server");
+        if (pathResolved != null)
+        {
+            _logger.LogInformation("Resolved sonos-http-api-server from PATH: {Path}", pathResolved);
+            return pathResolved;
+        }
+        
+        _logger.LogWarning("Could not resolve sonos-http-api-server from PATH, using command name directly");
         return "sonos-http-api-server";
+    }
+
+    /// <summary>
+    /// Resolves a command from the system PATH
+    /// </summary>
+    private string? ResolveFromPath(string command)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "/bin/sh",
+                Arguments = $"-c \"which {command}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process != null)
+            {
+                var output = process.StandardOutput.ReadToEnd().Trim();
+                process.WaitForExit();
+                
+                if (process.ExitCode == 0 && !string.IsNullOrEmpty(output) && File.Exists(output))
+                {
+                    return output;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug("Failed to resolve {Command} from PATH: {Error}", command, ex.Message);
+        }
+        
+        return null;
     }
 
     /// <summary>

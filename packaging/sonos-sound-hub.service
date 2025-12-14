@@ -11,6 +11,7 @@ ExecStart=/opt/sonos-sound-hub/api
 Restart=always
 RestartSec=10
 Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=PATH=/home/danmc/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 [Install]
 WantedBy=multi-user.target

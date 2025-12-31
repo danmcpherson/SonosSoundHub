@@ -9,6 +9,8 @@ window.mobileApp = {
     speakerStates: {},
     updateInterval: null,
     isUpdating: false,
+    batteryWarningDismissed: false,
+    batteryWarningDismissedUntil: null,
 
     /**
      * Initialize the mobile app
@@ -241,6 +243,7 @@ window.mobileApp = {
             });
             
             this.renderSpeakers();
+            this.checkBatteryWarnings();
         } catch (error) {
             console.error('Failed to update speakers:', error);
         } finally {
@@ -492,6 +495,70 @@ window.mobileApp = {
     escapeJs(text) {
         if (!text) return '';
         return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+    },
+
+    /**
+     * Check battery levels and show warnings if needed
+     */
+    checkBatteryWarnings() {
+        // If user dismissed warning, check if 5 minutes have passed
+        if (this.batteryWarningDismissedUntil && Date.now() < this.batteryWarningDismissedUntil) {
+            return;
+        }
+        this.batteryWarningDismissed = false;
+        this.batteryWarningDismissedUntil = null;
+
+        const warningBanner = document.getElementById('battery-warning');
+        const warningText = document.getElementById('battery-warning-text');
+        
+        if (!warningBanner || !warningText) return;
+
+        // Collect all speakers with low battery
+        const lowBatterySpeakers = [];
+        const criticalBatterySpeakers = [];
+
+        for (const [speaker, state] of Object.entries(this.speakerStates)) {
+            const batteryLevel = state.info?.batteryLevel;
+            if (batteryLevel !== null && batteryLevel !== undefined) {
+                if (batteryLevel < 5) {
+                    criticalBatterySpeakers.push({ name: speaker, level: batteryLevel });
+                } else if (batteryLevel < 20) {
+                    lowBatterySpeakers.push({ name: speaker, level: batteryLevel });
+                }
+            }
+        }
+
+        // Show critical warnings first, then low battery warnings
+        if (criticalBatterySpeakers.length > 0) {
+            const speakerList = criticalBatterySpeakers
+                .map(s => `${s.name} (${s.level}%)`)
+                .join(', ');
+            warningText.textContent = `Critical battery: ${speakerList}`;
+            warningBanner.classList.remove('hidden');
+            warningBanner.classList.add('critical');
+        } else if (lowBatterySpeakers.length > 0) {
+            const speakerList = lowBatterySpeakers
+                .map(s => `${s.name} (${s.level}%)`)
+                .join(', ');
+            warningText.textContent = `Low battery: ${speakerList}`;
+            warningBanner.classList.remove('hidden', 'critical');
+        } else {
+            warningBanner.classList.add('hidden');
+            warningBanner.classList.remove('critical');
+        }
+    },
+
+    /**
+     * Dismiss the battery warning for 5 minutes
+     */
+    dismissBatteryWarning() {
+        const warningBanner = document.getElementById('battery-warning');
+        if (warningBanner) {
+            warningBanner.classList.add('hidden');
+        }
+        this.batteryWarningDismissed = true;
+        // Dismiss for 5 minutes
+        this.batteryWarningDismissedUntil = Date.now() + (5 * 60 * 1000);
     }
 };
 

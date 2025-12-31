@@ -217,6 +217,17 @@ public class SonosCommandService
             {
                 speaker.CurrentTrack = trackResponse.Result;
             }
+
+            // Get battery level (for portable speakers like Roam/Move)
+            var batteryResponse = await ExecuteCommandAsync(speakerName, "battery");
+            if (batteryResponse.ExitCode == 0 && !string.IsNullOrEmpty(batteryResponse.Result))
+            {
+                // Battery response format is typically just a number like "85"
+                if (int.TryParse(batteryResponse.Result.Trim().Replace("%", ""), out var batteryLevel))
+                {
+                    speaker.BatteryLevel = batteryLevel;
+                }
+            }
         }
         catch (Exception ex)
         {

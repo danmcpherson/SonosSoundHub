@@ -13,6 +13,10 @@ public class Speaker
     public bool? IsMuted { get; set; }
     public string? CurrentTrack { get; set; }
     public string? PlaybackState { get; set; }
+    /// <summary>
+    /// Battery level percentage (0-100) for portable speakers like Roam/Move. Null if not a portable speaker.
+    /// </summary>
+    public int? BatteryLevel { get; set; }
 }
 
 /// <summary>

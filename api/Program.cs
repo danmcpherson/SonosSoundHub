@@ -12,7 +12,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 // Listen on all interfaces for Pi deployment (can be overridden by launchSettings.json in development)
 if (builder.Environment.IsProduction())
 {
-    builder.WebHost.UseUrls("http://0.0.0.0:5000");
+    builder.WebHost.UseUrls("http://0.0.0.0:80");
 }
 
 // Add services

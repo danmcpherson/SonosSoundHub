@@ -89,13 +89,18 @@ Then install the required [soco-cli](https://github.com/avantrec/soco-cli) depen
 pipx install soco-cli
 ```
 
+Allow the service to bind to port 80 (run once after install):
+```bash
+sudo setcap 'cap_net_bind_service=+ep' /opt/sonos-sound-hub/api
+```
+
 **Start on boot:**
 ```bash
 sudo systemctl enable sonos-sound-hub
 sudo systemctl start sonos-sound-hub
 ```
 
-**Access the UI:** Open `http://<your-pi-ip>:5000` in any browser.
+**Access the UI:** Open `http://<your-pi-ip>/` (port 80) in any browser.
 
 ---
 
@@ -123,7 +128,8 @@ Sonos Sound Hub works as a Progressive Web App (PWA). Add it to your home screen
 |---------|----------|
 | Speakers not found | Ensure your Pi is on the same network as your Sonos speakers |
 | Can't access the UI | Check that the service is running: `sudo systemctl status sonos-sound-hub` |
-| Port already in use | Another app is using port 5000 or 8000. Stop it or change ports in settings |
+| Port already in use | Another app is using port 80 or 8000. Stop it or change ports in settings |
+| Permission denied on startup | Grant low-port bind: `sudo setcap 'cap_net_bind_service=+ep' /opt/sonos-sound-hub/api` or add `AmbientCapabilities=CAP_NET_BIND_SERVICE` in the systemd unit |
 
 ---
 

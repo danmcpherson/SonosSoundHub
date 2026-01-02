@@ -523,6 +523,7 @@ body {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
+    width: 100%;
 }
 
 .volume-icon {
@@ -534,6 +535,7 @@ body {
 
 .volume-slider {
     flex: 1;
+    min-width: 0;
     height: 36px;
     -webkit-appearance: none;
     appearance: none;

@@ -78,6 +78,49 @@
       "options": {
         "cwd": "${workspaceFolder}/api"
       }
+    },
+    {
+      "label": "mcp-server",
+      "command": "${workspaceFolder}/sonos-mcp-server/.venv/bin/python",
+      "args": [
+        "-m",
+        "sonos_mcp_server"
+      ],
+      "type": "process",
+      "isBackground": true,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}/sonos-mcp-server"
+      }
+    },
+    {
+      "label": "mcp-server-install",
+      "command": "python3",
+      "args": [
+        "-m",
+        "venv",
+        ".venv"
+      ],
+      "type": "process",
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}/sonos-mcp-server"
+      }
+    },
+    {
+      "label": "mcp-server-deps",
+      "command": "${workspaceFolder}/sonos-mcp-server/.venv/bin/pip",
+      "args": [
+        "install",
+        "-e",
+        "."
+      ],
+      "type": "process",
+      "dependsOn": "mcp-server-install",
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}/sonos-mcp-server"
+      }
     }
   ]
 }

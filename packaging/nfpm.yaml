@@ -20,3 +20,13 @@ contents:
   - src: /opt/sonos-sound-hub/api
     dst: /usr/local/bin/sonos-sound-hub
     type: symlink
+  # MCP Server for AI assistant integration
+  - src: "sonos-mcp-server/pyproject.toml"
+    dst: /opt/sonos-sound-hub/sonos-mcp-server/pyproject.toml
+    type: file
+  - src: "sonos-mcp-server/README.md"
+    dst: /opt/sonos-sound-hub/sonos-mcp-server/README.md
+    type: file
+  - src: "sonos-mcp-server/src/sonos_mcp_server/**"
+    dst: /opt/sonos-sound-hub/sonos-mcp-server/src/sonos_mcp_server
+    type: file

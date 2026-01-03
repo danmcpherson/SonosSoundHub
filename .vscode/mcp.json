@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "sonos": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/sonos-mcp-server/.venv/bin/python",
+      "args": ["-m", "sonos_mcp_server"],
+      "env": {
+        "SONOS_API_URL": "http://localhost:5000"
+      }
+    }
+  }
+}

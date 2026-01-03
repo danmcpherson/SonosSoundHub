@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sonos-mcp-server"
+version = "0.1.0"
+description = "MCP Server for Sonos control via SonosSoundHub API"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+    "httpx>=0.25.0",
+]
+
+[project.scripts]
+sonos-mcp-server = "sonos_mcp_server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sonos_mcp_server"]

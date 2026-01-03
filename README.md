@@ -102,6 +102,13 @@ sudo systemctl start sonos-sound-hub
 
 **Access the UI:** Open `http://<your-pi-ip>/` (port 80) in any browser.
 
+**Optional: Install MCP Server for AI Assistants:**
+```bash
+cd /opt/sonos-sound-hub/sonos-mcp-server
+python3 -m venv .venv
+.venv/bin/pip install -e .
+```
+
 ---
 
 ### Requirements
@@ -119,6 +126,76 @@ Sonos Sound Hub works as a Progressive Web App (PWA). Add it to your home screen
 **iPhone/iPad:** Open the URL in Safari → tap Share → "Add to Home Screen"
 
 **Android:** Open the URL in Chrome → tap the menu → "Add to Home screen"
+
+---
+
+## 🤖 AI Assistant Integration (MCP Server)
+
+Sonos Sound Hub includes an MCP (Model Context Protocol) server that lets AI assistants like Claude, ChatGPT, and GitHub Copilot control your Sonos system through natural language.
+
+### Setup
+
+1. **Install the MCP server** (requires Python 3.10+):
+   ```bash
+   cd /opt/sonos-sound-hub/sonos-mcp-server
+   python3 -m venv .venv
+   .venv/bin/pip install -e .
+   ```
+
+2. **Configure your AI tool:**
+
+   **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+   ```json
+   {
+     "mcpServers": {
+       "sonos": {
+         "command": "/opt/sonos-sound-hub/sonos-mcp-server/.venv/bin/python",
+         "args": ["-m", "sonos_mcp_server"],
+         "env": {
+           "SONOS_API_URL": "http://your-pi-ip:80"
+         }
+       }
+     }
+   }
+   ```
+
+   **VS Code / GitHub Copilot** (`.vscode/mcp.json`):
+   ```json
+   {
+     "servers": {
+       "sonos": {
+         "type": "stdio",
+         "command": "/path/to/sonos-mcp-server/.venv/bin/python",
+         "args": ["-m", "sonos_mcp_server"],
+         "env": {
+           "SONOS_API_URL": "http://your-pi-ip:80"
+         }
+       }
+     }
+   }
+   ```
+
+3. **Restart your AI application** to load the new tools.
+
+### Example Commands
+
+Once configured, you can use natural language:
+- *"What Sonos speakers are available?"*
+- *"Play my Jazz playlist on the Kitchen speaker"*
+- *"Set the Living Room volume to 40"*
+- *"Run the morning routine macro"*
+- *"Group all speakers for party mode"*
+
+### Available Tools
+
+The MCP server exposes 28 tools for complete Sonos control:
+- Speaker discovery and status
+- Playback control (play, pause, next, previous)
+- Volume and mute control
+- Speaker grouping and party mode
+- Favorites, playlists, and radio stations
+- Queue management
+- Macro execution
 
 ---
 

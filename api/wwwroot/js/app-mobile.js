@@ -25,9 +25,6 @@ window.mobileApp = {
         
         // Load saved preferences
         this.loadPreferences();
-
-        // Layout debug to diagnose sticky header behavior
-        this.initLayoutDebug();
         
         // Check if should show install prompt
         this.checkInstallPrompt();
@@ -47,34 +44,6 @@ window.mobileApp = {
         
         // Start polling for speaker updates
         this.startPolling();
-    },
-
-    /**
-     * Debug sticky header and scroll containers
-     */
-    initLayoutDebug() {
-        const header = document.querySelector('.app-header-mobile');
-        const app = document.querySelector('.mobile-app');
-        const content = document.querySelector('.app-content');
-        const logState = (label) => {
-            if (!header) return;
-            const rect = header.getBoundingClientRect();
-            const pos = window.getComputedStyle(header).position;
-            console.log('[LayoutDebug]', label, {
-                windowScrollY: window.scrollY,
-                appScrollTop: app?.scrollTop,
-                contentScrollTop: content?.scrollTop,
-                headerTop: rect.top,
-                headerBottom: rect.bottom,
-                headerPosition: pos
-            });
-        };
-        ['scroll', 'resize'].forEach(evt => {
-            window.addEventListener(evt, () => logState(evt));
-            app?.addEventListener(evt, () => logState(`app-${evt}`));
-            content?.addEventListener(evt, () => logState(`content-${evt}`));
-        });
-        logState('init');
     },
 
     /**

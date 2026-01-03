@@ -9,6 +9,7 @@ window.mobileApp = {
     speakers: [],
     speakerStates: {},
     speakerGroups: {},  // Maps speaker names to their group info
+    expandedVolumePanels: new Set(),  // Tracks which speaker panels have individual volumes expanded
     updateInterval: null,
     versionCheckInterval: null,
     currentVersion: null,
@@ -22,6 +23,9 @@ window.mobileApp = {
      */
     async init() {
         console.log('Initializing Sonos Sound Hub Mobile App');
+        
+        // Fix iOS scroll freeze at boundaries
+        this.setupIOSScrollFix();
         
         // Load saved preferences
         this.loadPreferences();
@@ -44,6 +48,39 @@ window.mobileApp = {
         
         // Start polling for speaker updates
         this.startPolling();
+    },
+
+    /**
+     * Fix iOS scroll freeze when overscrolling at boundaries
+     * iOS locks scrolling during rubber-band bounce animation
+     */
+    setupIOSScrollFix() {
+        const scrollContainer = document.querySelector('.app-content');
+        if (!scrollContainer) return;
+
+        let lastY = 0;
+
+        scrollContainer.addEventListener('touchstart', (e) => {
+            lastY = e.touches[0].clientY;
+        }, { passive: true });
+
+        scrollContainer.addEventListener('touchmove', (e) => {
+            const currentY = e.touches[0].clientY;
+            const scrollTop = scrollContainer.scrollTop;
+            const scrollHeight = scrollContainer.scrollHeight;
+            const clientHeight = scrollContainer.clientHeight;
+            const isAtTop = scrollTop <= 0;
+            const isAtBottom = scrollTop + clientHeight >= scrollHeight;
+            const isScrollingUp = currentY > lastY;
+            const isScrollingDown = currentY < lastY;
+
+            // Prevent overscroll at boundaries to avoid iOS freeze
+            if ((isAtTop && isScrollingUp) || (isAtBottom && isScrollingDown)) {
+                e.preventDefault();
+            }
+
+            lastY = currentY;
+        }, { passive: false });
     },
 
     /**
@@ -396,6 +433,28 @@ window.mobileApp = {
     renderSpeakers() {
         const container = document.getElementById('speakers-list');
         
+        // Save which individual volume panels are currently expanded before re-rendering
+        container.querySelectorAll('details.individual-volumes-expandable[open]').forEach(details => {
+            const speakerCard = details.closest('.speaker-card');
+            if (speakerCard) {
+                const speakerName = speakerCard.dataset.speaker;
+                if (speakerName) {
+                    this.expandedVolumePanels.add(speakerName);
+                }
+            }
+        });
+        
+        // Also remove panels that were manually closed
+        container.querySelectorAll('details.individual-volumes-expandable:not([open])').forEach(details => {
+            const speakerCard = details.closest('.speaker-card');
+            if (speakerCard) {
+                const speakerName = speakerCard.dataset.speaker;
+                if (speakerName) {
+                    this.expandedVolumePanels.delete(speakerName);
+                }
+            }
+        });
+        
         if (this.speakers.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
@@ -434,6 +493,17 @@ window.mobileApp = {
         })));
         
         container.innerHTML = panels.map(panel => this.renderPanel(panel)).join('');
+        
+        // Restore expanded state for individual volume panels
+        this.expandedVolumePanels.forEach(speakerName => {
+            const speakerCard = container.querySelector(`.speaker-card[data-speaker="${CSS.escape(speakerName)}"]`);
+            if (speakerCard) {
+                const details = speakerCard.querySelector('details.individual-volumes-expandable');
+                if (details) {
+                    details.open = true;
+                }
+            }
+        });
     },
 
     /**

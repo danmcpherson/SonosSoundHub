@@ -50,6 +50,17 @@ window.voiceAssistant = {
     async checkStatus() {
         try {
             const response = await fetch('/api/voice/status');
+            
+            // Check if response is OK and is JSON before parsing
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                throw new Error('Response is not JSON - API endpoint may not exist');
+            }
+            
             const status = await response.json();
             
             const banner = document.getElementById('voice-status-banner');
@@ -86,6 +97,24 @@ window.voiceAssistant = {
             return status.configured;
         } catch (error) {
             console.error('Failed to check voice status:', error);
+            
+            // On error, show setup panel so user can configure API key
+            const setupPanel = document.getElementById('voice-setup');
+            const settingsPanel = document.getElementById('voice-settings');
+            const settingsOverlay = document.getElementById('voice-settings-overlay');
+            const settingsBtn = document.getElementById('voice-settings-btn');
+            const conversationPanel = document.getElementById('voice-conversation');
+            const controlsPanel = document.querySelector('.voice-controls');
+            const voiceButton = document.getElementById('voice-button');
+            
+            setupPanel?.classList.remove('hidden');
+            settingsPanel?.classList.add('hidden');
+            settingsOverlay?.classList.add('hidden');
+            settingsBtn?.classList.add('hidden');
+            conversationPanel?.classList.add('hidden');
+            if (controlsPanel) controlsPanel.style.display = 'none';
+            voiceButton?.classList.add('disabled');
+            
             return false;
         }
     },
@@ -216,6 +245,20 @@ window.voiceAssistant = {
         const stateText = document.getElementById('voice-state');
         
         try {
+            // Check if we're in a secure context (HTTPS or localhost)
+            if (!window.isSecureContext) {
+                this.showError('Voice control requires HTTPS. Please access this site via HTTPS.');
+                console.error('Voice control requires a secure context (HTTPS)');
+                return;
+            }
+            
+            // Check if mediaDevices API is available
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                this.showError('Microphone access not available. Please use HTTPS or a modern browser.');
+                console.error('navigator.mediaDevices.getUserMedia not available');
+                return;
+            }
+            
             // Check configuration first
             const configured = await this.checkStatus();
             if (!configured) {

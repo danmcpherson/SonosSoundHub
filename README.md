@@ -105,8 +105,8 @@ sudo systemctl start sonos-sound-hub
 **Optional: Install MCP Server for AI Assistants:**
 ```bash
 cd /opt/sonos-sound-hub/sonos-mcp-server
-python3 -m venv .venv
-.venv/bin/pip install -e .
+sudo python3 -m venv .venv
+sudo .venv/bin/pip install -e .
 ```
 
 ---

@@ -47,3 +47,5 @@ Thumbs.db
 *.swo
 *~
 .idea/
+sonos-mcp-server/src/sonos_mcp_server/__pycache__/*
+

@@ -31,6 +31,9 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(optio
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddMemoryCache();
 
+// Add HttpClient factory for general use (VoiceController, etc.)
+builder.Services.AddHttpClient();
+
 // Add HttpClient for soco-cli communication
 builder.Services.AddHttpClient<SonosCommandService>();
 builder.Services.AddHttpClient<MacroService>();

@@ -48,6 +48,11 @@ window.mobileApp = {
             this.loadSpeakers()
         ]);
         
+        // Initialize voice assistant if available
+        if (typeof voiceAssistant !== 'undefined') {
+            voiceAssistant.init();
+        }
+        
         // Start polling for speaker updates
         this.startPolling();
     },

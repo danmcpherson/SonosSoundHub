@@ -124,6 +124,105 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Voice Tab -->
+            <section id="voice-tab" class="tab-content">
+                <div class="voice-container">
+                    <!-- Status Banner (shown when not configured) -->
+                    <div id="voice-status-banner" class="voice-status-banner hidden">
+                        <span id="voice-status-text">Voice control not configured</span>
+                    </div>
+
+                    <!-- API Key Setup (shown when not configured) -->
+                    <div id="voice-setup" class="voice-setup hidden">
+                        <div class="voice-setup-card">
+                            <h3>🔑 OpenAI API Key Required</h3>
+                            <p>Voice control uses OpenAI's Realtime API. Enter your API key to enable voice commands.</p>
+                            <div class="voice-setup-form">
+                                <input type="password" id="openai-api-key" class="voice-input" placeholder="sk-proj-..." autocomplete="off">
+                                <button id="save-api-key-btn" class="voice-save-btn" onclick="voiceAssistant.saveApiKey()">
+                                    Save Key
+                                </button>
+                            </div>
+                            <p class="voice-setup-hint">
+                                <a href="https://platform.openai.com/api-keys" target="_blank">Get an API key from OpenAI →</a>
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Voice Settings Slide-out (shown when configured) -->
+                    <div id="voice-settings-overlay" class="voice-settings-overlay hidden" onclick="voiceAssistant.toggleSettings()"></div>
+                    <div id="voice-settings" class="voice-settings hidden">
+                        <div class="voice-settings-header">
+                            <h3>Voice Settings</h3>
+                            <button class="voice-settings-close" onclick="voiceAssistant.toggleSettings()">×</button>
+                        </div>
+                        <div class="voice-settings-content">
+                            <label for="voice-select">AI Voice</label>
+                            <select id="voice-select" class="voice-select" onchange="voiceAssistant.saveVoicePreference()">
+                                <option value="verse">Verse (default)</option>
+                                <option value="alloy">Alloy</option>
+                                <option value="ash">Ash</option>
+                                <option value="ballad">Ballad</option>
+                                <option value="coral">Coral</option>
+                                <option value="echo">Echo</option>
+                                <option value="sage">Sage</option>
+                                <option value="shimmer">Shimmer</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Settings Toggle Button -->
+                    <button id="voice-settings-btn" class="voice-settings-btn hidden" onclick="voiceAssistant.toggleSettings()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                    </button>
+
+                    <!-- Conversation Display -->
+                    <div id="voice-conversation" class="voice-conversation">
+                        <div class="voice-welcome">
+                            <svg class="voice-welcome-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                <line x1="12" y1="19" x2="12" y2="23"></line>
+                                <line x1="8" y1="23" x2="16" y2="23"></line>
+                            </svg>
+                            <h3>Voice Control</h3>
+                            <p>Tap the microphone and speak to control your Sonos system</p>
+                            <div class="voice-examples">
+                                <span class="voice-example">"Play jazz in the kitchen"</span>
+                                <span class="voice-example">"Set volume to 40"</span>
+                                <span class="voice-example">"Run the morning macro"</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Voice Controls -->
+                    <div class="voice-controls">
+                        <div id="voice-visualizer" class="voice-visualizer">
+                            <div class="visualizer-bar"></div>
+                            <div class="visualizer-bar"></div>
+                            <div class="visualizer-bar"></div>
+                            <div class="visualizer-bar"></div>
+                            <div class="visualizer-bar"></div>
+                        </div>
+                        <button id="voice-button" class="voice-button" onclick="voiceAssistant.toggleListening()">
+                            <svg class="voice-mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                <line x1="12" y1="19" x2="12" y2="23"></line>
+                                <line x1="8" y1="23" x2="16" y2="23"></line>
+                            </svg>
+                            <svg class="voice-stop-icon hidden" viewBox="0 0 24 24" fill="currentColor">
+                                <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+                            </svg>
+                        </button>
+                        <div id="voice-state" class="voice-state">Tap to speak</div>
+                    </div>
+                </div>
+            </section>
         </main>
 
         <!-- Bottom Tab Bar -->
@@ -142,6 +241,15 @@
                 </svg>
                 <span>Speakers</span>
             </button>
+            <button class="tab-button" data-tab="voice-tab" onclick="mobileApp.switchTab('voice-tab')">
+                <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+                <span>Voice</span>
+            </button>
         </nav>
 
         <!-- Toast Container -->
@@ -149,6 +257,7 @@
     </div>
 
     <script src="js/api.js"></script>
+    <script src="js/voice.js"></script>
     <script src="js/app-mobile.js"></script>
 </body>
 </html>

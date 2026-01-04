@@ -444,7 +444,10 @@ public class MacroService
         try
         {
             var json = await File.ReadAllTextAsync(_metadataFilePath);
-            var macros = JsonSerializer.Deserialize<List<Macro>>(json) ?? new List<Macro>();
+            var macros = JsonSerializer.Deserialize<List<Macro>>(json, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            }) ?? new List<Macro>();
             
             // Filter out invalid macros and handle duplicates
             var validMacros = macros

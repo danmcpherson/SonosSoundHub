@@ -65,6 +65,7 @@ class SoCoService:
         """Fallback discovery by scanning IP range.
         
         Used when multicast discovery doesn't work (e.g., Docker).
+        Only returns visible speakers (excludes bonded subs, surrounds).
         """
         speakers: dict[str, SoCo] = {}
         ips_to_scan = [f"{subnet}.{i}" for i in range(1, 255)]
@@ -79,6 +80,10 @@ class SoCoService:
                     ip, _ = result  # Ignore XML name, use SoCo's player_name instead
                     try:
                         device = SoCo(ip)
+                        # Only include visible speakers (not bonded subs/surrounds)
+                        if not device.is_visible:
+                            logger.debug("Skipping non-visible speaker at %s", ip)
+                            continue
                         # Use SoCo's player_name for consistency with other SoCo APIs
                         name = device.player_name
                         if name:
@@ -110,13 +115,14 @@ class SoCoService:
                 speakers = await asyncio.to_thread(soco.discover, timeout=5)
                 
                 if speakers:
+                    # Filter to only visible speakers (excludes bonded subs, surrounds)
                     self._speakers_cache = {
                         speaker.player_name: speaker
                         for speaker in speakers
-                        if speaker.player_name
+                        if speaker.player_name and speaker.is_visible
                     }
                     self._last_discovery = datetime.now(timezone.utc)
-                    logger.info("Discovered %d speakers via multicast", len(self._speakers_cache))
+                    logger.info("Discovered %d visible speakers via multicast", len(self._speakers_cache))
                     return list(self._speakers_cache.keys())
                 else:
                     logger.warning("Multicast discovery found no speakers, trying IP scan")
@@ -125,7 +131,7 @@ class SoCoService:
                     if scanned:
                         self._speakers_cache = scanned
                         self._last_discovery = datetime.now(timezone.utc)
-                        logger.info("Discovered %d speakers via IP scan", len(self._speakers_cache))
+                        logger.info("Discovered %d visible speakers via IP scan", len(self._speakers_cache))
                         return list(self._speakers_cache.keys())
                     return []
                     
@@ -520,7 +526,8 @@ class SoCoService:
             zones = device.all_zones
             
             for zone in zones:
-                if zone.is_coordinator:
+                # Only include visible coordinators (not bonded satellites)
+                if zone.is_coordinator and zone.is_visible:
                     coord_name = zone.player_name
                     if coord_name in seen_coordinators:
                         continue
@@ -528,9 +535,10 @@ class SoCoService:
                     
                     members = []
                     if zone.group:
+                        # Only include visible members (not bonded subs/surrounds)
                         members = [
                             m.player_name for m in zone.group.members
-                            if m.player_name != coord_name
+                            if m.player_name != coord_name and m.is_visible
                         ]
                     
                     groups.append({

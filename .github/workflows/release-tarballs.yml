@@ -34,8 +34,8 @@ jobs:
           mkdir -p package/sonos-sound-hub
           cp -r api-python/src package/sonos-sound-hub/
           cp api-python/pyproject.toml package/sonos-sound-hub/
-          cp -r api/wwwroot package/sonos-sound-hub/
-          cp -r api/data package/sonos-sound-hub/
+          cp -r wwwroot package/sonos-sound-hub/
+          cp -r data package/sonos-sound-hub/
           cp packaging/sonos-sound-hub.service package/sonos-sound-hub/
           cp packaging/postinstall.sh package/sonos-sound-hub/
           tar -czf sonos-sound-hub-${{ env.VERSION }}.tar.gz -C package sonos-sound-hub

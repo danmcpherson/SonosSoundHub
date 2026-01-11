@@ -15,9 +15,9 @@ depends:
 scripts:
   postinstall: packaging/postinstall.sh
 contents:
-  # Python application
-  - src: "api-python/src/**"
-    dst: /opt/sndctl/src
+  # Python application - preserve directory structure
+  - src: "api-python/src/sndctl/**"
+    dst: /opt/sndctl/src/sndctl
     type: file
   - src: "api-python/pyproject.toml"
     dst: /opt/sndctl/pyproject.toml

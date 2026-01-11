@@ -578,11 +578,45 @@ window.speakers = {
      * Parses group info from soco-cli output
      * Format: "CoordinatorName: Member1, Member2" or "SpeakerName:" (no group)
      */
-    parseGroupInfo(groupsText) {
+    parseGroupInfo(groupsData) {
         const groups = {};
-        if (!groupsText) return groups;
+        if (!groupsData) return groups;
 
-        const lines = groupsText.split('\n').filter(line => line.trim());
+        // Handle JSON array format from SoCo API: [{coordinator: "Name", members: ["Member1"]}]
+        if (Array.isArray(groupsData)) {
+            groupsData.forEach(group => {
+                const coordinator = group.coordinator;
+                const memberNames = group.members || [];
+                
+                // Only track if there are actual group members
+                if (memberNames.length > 0) {
+                    const allMembers = [coordinator, ...memberNames];
+                    const color = this.getGroupColor(coordinator);
+                    
+                    // Mark coordinator
+                    groups[coordinator] = {
+                        coordinator,
+                        members: allMembers,
+                        color,
+                        isCoordinator: true
+                    };
+                    
+                    // Mark all members
+                    memberNames.forEach(member => {
+                        groups[member] = {
+                            coordinator,
+                            members: allMembers,
+                            color,
+                            isCoordinator: false
+                        };
+                    });
+                }
+            });
+            return groups;
+        }
+
+        // Legacy text format fallback: "CoordinatorName: Member1, Member2"
+        const lines = String(groupsData).split('\n').filter(line => line.trim());
         
         lines.forEach(line => {
             // Format is "CoordinatorName: Member1, Member2" or "SpeakerName:" for ungrouped

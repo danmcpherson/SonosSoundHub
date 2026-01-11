@@ -76,13 +76,14 @@ class SoCoService:
             for future in as_completed(futures):
                 result = future.result()
                 if result:
-                    ip, name = result
+                    ip, _ = result  # Ignore XML name, use SoCo's player_name instead
                     try:
                         device = SoCo(ip)
-                        # Verify it's reachable
-                        _ = device.player_name
-                        speakers[name] = device
-                        logger.info("Found speaker via IP scan: %s at %s", name, ip)
+                        # Use SoCo's player_name for consistency with other SoCo APIs
+                        name = device.player_name
+                        if name:
+                            speakers[name] = device
+                            logger.info("Found speaker via IP scan: %s at %s", name, ip)
                     except Exception as e:
                         logger.debug("Could not connect to %s: %s", ip, e)
         

@@ -20,7 +20,7 @@ pip install -e .
 # Run the server
 SNDCTL_DATA_DIRECTORY="../data" \
 SNDCTL_WWWROOT_PATH="../wwwroot" \
-python -m uvicorn sndctl.main:app --host 0.0.0.0 --port 5001
+python -m uvicorn sndctl.main:app --host 0.0.0.0 --port 8000
 ```
 
 ## Environment Variables
@@ -85,7 +85,7 @@ python -m uvicorn sndctl.main:app --host 0.0.0.0 --port 5001
 pip install -e ".[dev]"
 
 # Run with auto-reload
-uvicorn sndctl.main:app --reload --port 5001
+uvicorn sndctl.main:app --reload --port 8000
 ```
 
 ## Project Structure

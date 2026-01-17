@@ -19,7 +19,7 @@
 	"runArgs": ["--network=host"],
 
 	// Forward ports for noVNC and VNC access
-	"forwardPorts": [6080, 5901, 5001, 9222],
+	"forwardPorts": [6080, 5901, 8000, 9222],
 	"portsAttributes": {
 		"6080": {
 			"label": "noVNC Desktop",
@@ -29,7 +29,7 @@
 			"label": "VNC",
 			"onAutoForward": "silent"
 		},
-		"5001": {
+		"8000": {
 			"label": "API Server",
 			"onAutoForward": "notify"
 		},

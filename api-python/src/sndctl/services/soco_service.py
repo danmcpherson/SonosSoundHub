@@ -21,7 +21,7 @@ from soco import SoCo
 from soco.exceptions import SoCoException
 
 from ..config import Settings
-from ..models import Speaker, Favorite, QueueItem
+from ..models import Speaker, Favorite, QueueItem, ListItem
 
 logger = logging.getLogger(__name__)
 
@@ -261,6 +261,32 @@ class SoCoService:
         
         return info
     
+    async def get_playback_state(self, speaker_name: str) -> str:
+        """Get just the playback state (fast, minimal UPnP calls).
+        
+        Args:
+            speaker_name: Name of the speaker.
+            
+        Returns:
+            Playback state: 'PLAYING', 'PAUSED_PLAYBACK', 'STOPPED', or 'UNKNOWN'
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return "UNKNOWN"
+        try:
+            def get_state():
+                # For grouped speakers, get state from coordinator
+                if device.group and not device.is_coordinator:
+                    transport = device.group.coordinator.get_current_transport_info()
+                else:
+                    transport = device.get_current_transport_info()
+                return transport.get("current_transport_state", "UNKNOWN")
+            
+            return await asyncio.to_thread(get_state)
+        except Exception as e:
+            logger.error("Get playback state failed for %s: %s", speaker_name, e)
+            return "UNKNOWN"
+    
     async def play(self, speaker_name: str) -> bool:
         """Start playback on a speaker."""
         device = self._get_speaker(speaker_name)
@@ -333,6 +359,72 @@ class SoCoService:
         except Exception as e:
             logger.error("Set volume failed for %s: %s", speaker_name, e)
             return False
+    
+    async def get_volume(self, speaker_name: str) -> int | None:
+        """Get speaker volume (fast, single UPnP call).
+        
+        Args:
+            speaker_name: Name of the speaker.
+            
+        Returns:
+            Volume (0-100) or None if failed.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return None
+        try:
+            return await asyncio.to_thread(lambda: device.volume)
+        except Exception as e:
+            logger.error("Get volume failed for %s: %s", speaker_name, e)
+            return None
+    
+    async def get_mute(self, speaker_name: str) -> bool | None:
+        """Get speaker mute state (fast, single UPnP call).
+        
+        Args:
+            speaker_name: Name of the speaker.
+            
+        Returns:
+            True if muted, False if not, None if failed.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return None
+        try:
+            return await asyncio.to_thread(lambda: device.mute)
+        except Exception as e:
+            logger.error("Get mute failed for %s: %s", speaker_name, e)
+            return None
+    
+    async def get_current_track(self, speaker_name: str) -> str | None:
+        """Get current track info (fast, minimal UPnP calls).
+        
+        Args:
+            speaker_name: Name of the speaker.
+            
+        Returns:
+            Track string like "Artist - Title" or None if failed.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return None
+        try:
+            def get_track():
+                # For grouped speakers, get track from coordinator
+                if device.group and not device.is_coordinator:
+                    track_info = device.group.coordinator.get_current_track_info()
+                else:
+                    track_info = device.get_current_track_info()
+                title = track_info.get("title", "")
+                artist = track_info.get("artist", "")
+                if title and artist:
+                    return f"{artist} - {title}"
+                return title or None
+            
+            return await asyncio.to_thread(get_track)
+        except Exception as e:
+            logger.error("Get current track failed for %s: %s", speaker_name, e)
+            return None
     
     async def set_mute(self, speaker_name: str, mute: bool) -> bool:
         """Set speaker mute state."""
@@ -454,6 +546,41 @@ class SoCoService:
             
         except Exception as e:
             logger.error("Error playing favorite: %s", e)
+            return False
+    
+    async def play_favorite_by_number(self, speaker_name: str, number: int) -> bool:
+        """Play a Sonos favorite by its number (1-based).
+        
+        Args:
+            speaker_name: Speaker to play on.
+            number: 1-based index of the favorite.
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            favorites = await asyncio.to_thread(
+                lambda: device.music_library.get_sonos_favorites()
+            )
+            if number < 1 or number > len(favorites):
+                logger.error("Favorite number %d out of range (1-%d)", number, len(favorites))
+                return False
+            
+            fav = favorites[number - 1]  # Convert 1-based to 0-based
+            
+            def play():
+                device.clear_queue()
+                device.add_to_queue(fav)
+                device.play_from_queue(0)
+            
+            await asyncio.to_thread(play)
+            return True
+        except Exception as e:
+            logger.error("Failed to play favorite #%d: %s", number, e)
             return False
     
     async def get_queue(self, speaker_name: str) -> list[QueueItem]:
@@ -592,4 +719,574 @@ class SoCoService:
             return True
         except Exception as e:
             logger.error("Failed to ungroup %s: %s", speaker_name, e)
+            return False
+    
+    async def party_mode(self, speaker_name: str) -> bool:
+        """Group all speakers together with the given speaker as coordinator.
+        
+        Args:
+            speaker_name: Name of the coordinator speaker.
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            await asyncio.to_thread(device.partymode)
+            return True
+        except Exception as e:
+            logger.error("Failed to activate party mode on %s: %s", speaker_name, e)
+            return False
+    
+    async def ungroup_all(self, speaker_name: str) -> bool:
+        """Ungroup all speakers.
+        
+        Args:
+            speaker_name: Any speaker name (used to get zone list).
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            def _ungroup_all():
+                for zone in device.all_zones:
+                    if zone.is_visible and not zone.is_coordinator:
+                        try:
+                            zone.unjoin()
+                        except Exception:
+                            pass
+            await asyncio.to_thread(_ungroup_all)
+            return True
+        except Exception as e:
+            logger.error("Failed to ungroup all: %s", e)
+            return False
+    
+    async def set_group_volume(self, speaker_name: str, volume: int) -> bool:
+        """Set volume for all speakers in a group.
+        
+        Args:
+            speaker_name: Name of any speaker in the group.
+            volume: Volume level (0-100).
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            await asyncio.to_thread(setattr, device, "group_volume", volume)
+            return True
+        except Exception as e:
+            logger.error("Failed to set group volume on %s: %s", speaker_name, e)
+            return False
+    
+    async def get_shuffle(self, speaker_name: str) -> bool | None:
+        """Get shuffle mode.
+        
+        Args:
+            speaker_name: Speaker name.
+            
+        Returns:
+            True if shuffle is on, False if off, None on error.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return None
+        
+        try:
+            shuffle = await asyncio.to_thread(lambda: device.shuffle)
+            return shuffle
+        except Exception as e:
+            logger.error("Failed to get shuffle for %s: %s", speaker_name, e)
+            return None
+    
+    async def set_shuffle(self, speaker_name: str, enabled: bool) -> bool:
+        """Set shuffle mode.
+        
+        Args:
+            speaker_name: Speaker name.
+            enabled: True to enable, False to disable.
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            await asyncio.to_thread(setattr, device, "shuffle", enabled)
+            return True
+        except Exception as e:
+            logger.error("Failed to set shuffle for %s: %s", speaker_name, e)
+            return False
+    
+    async def get_repeat(self, speaker_name: str) -> str | None:
+        """Get repeat mode.
+        
+        Args:
+            speaker_name: Speaker name.
+            
+        Returns:
+            'off', 'one', or 'all', or None on error.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return None
+        
+        try:
+            # SoCo returns 'NONE', 'ONE', or 'ALL'
+            repeat = await asyncio.to_thread(lambda: device.repeat)
+            if repeat == "NONE":
+                return "off"
+            return repeat.lower()
+        except Exception as e:
+            logger.error("Failed to get repeat for %s: %s", speaker_name, e)
+            return None
+    
+    async def set_repeat(self, speaker_name: str, mode: str) -> bool:
+        """Set repeat mode.
+        
+        Args:
+            speaker_name: Speaker name.
+            mode: 'off', 'one', or 'all'.
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            # Convert to SoCo format
+            soco_mode = {"off": "NONE", "one": "ONE", "all": "ALL"}.get(mode.lower(), "NONE")
+            await asyncio.to_thread(setattr, device, "repeat", soco_mode)
+            return True
+        except Exception as e:
+            logger.error("Failed to set repeat for %s: %s", speaker_name, e)
+            return False
+    
+    async def get_crossfade(self, speaker_name: str) -> bool | None:
+        """Get crossfade mode.
+        
+        Args:
+            speaker_name: Speaker name.
+            
+        Returns:
+            True if crossfade is on, False if off, None on error.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return None
+        
+        try:
+            crossfade = await asyncio.to_thread(lambda: device.cross_fade)
+            return crossfade
+        except Exception as e:
+            logger.error("Failed to get crossfade for %s: %s", speaker_name, e)
+            return None
+    
+    async def set_crossfade(self, speaker_name: str, enabled: bool) -> bool:
+        """Set crossfade mode.
+        
+        Args:
+            speaker_name: Speaker name.
+            enabled: True to enable, False to disable.
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            await asyncio.to_thread(setattr, device, "cross_fade", enabled)
+            return True
+        except Exception as e:
+            logger.error("Failed to set crossfade for %s: %s", speaker_name, e)
+            return False
+    
+    async def get_sleep_timer(self, speaker_name: str) -> int | None:
+        """Get remaining sleep timer in seconds.
+        
+        Args:
+            speaker_name: Speaker name.
+            
+        Returns:
+            Remaining seconds, 0 if no timer, None on error.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return None
+        
+        try:
+            timer = await asyncio.to_thread(device.get_sleep_timer)
+            return timer or 0
+        except Exception as e:
+            logger.error("Failed to get sleep timer for %s: %s", speaker_name, e)
+            return None
+    
+    async def set_sleep_timer(self, speaker_name: str, seconds: int | None) -> bool:
+        """Set or cancel sleep timer.
+        
+        Args:
+            speaker_name: Speaker name.
+            seconds: Seconds until sleep, or None to cancel.
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            await asyncio.to_thread(device.set_sleep_timer, seconds)
+            return True
+        except Exception as e:
+            logger.error("Failed to set sleep timer for %s: %s", speaker_name, e)
+            return False
+    
+    async def seek(self, speaker_name: str, position: str) -> bool:
+        """Seek to a position in the current track.
+        
+        Args:
+            speaker_name: Speaker name.
+            position: Position in HH:MM:SS format.
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            await asyncio.to_thread(device.seek, position)
+            return True
+        except Exception as e:
+            logger.error("Failed to seek on %s: %s", speaker_name, e)
+            return False
+    
+    # ========================================
+    # Queue Operations
+    # ========================================
+    
+    async def get_queue_length(self, speaker_name: str) -> int:
+        """Get the number of items in the queue.
+        
+        Args:
+            speaker_name: Speaker name.
+            
+        Returns:
+            Queue length.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return 0
+        
+        try:
+            length = await asyncio.to_thread(lambda: device.queue_size)
+            return length or 0
+        except Exception as e:
+            logger.error("Failed to get queue length for %s: %s", speaker_name, e)
+            return 0
+    
+    async def get_queue_position(self, speaker_name: str) -> int:
+        """Get the current position in the queue.
+        
+        Args:
+            speaker_name: Speaker name.
+            
+        Returns:
+            Current position (1-based).
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return 0
+        
+        try:
+            track_info = await asyncio.to_thread(device.get_current_track_info)
+            position = int(track_info.get("playlist_position", 0))
+            return position
+        except Exception as e:
+            logger.error("Failed to get queue position for %s: %s", speaker_name, e)
+            return 0
+    
+    async def play_from_queue(self, speaker_name: str, position: int) -> bool:
+        """Play a specific track from the queue.
+        
+        Args:
+            speaker_name: Speaker name.
+            position: Track position (0-based index).
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            await asyncio.to_thread(device.play_from_queue, position)
+            return True
+        except Exception as e:
+            logger.error("Failed to play from queue on %s: %s", speaker_name, e)
+            return False
+    
+    async def clear_queue(self, speaker_name: str) -> bool:
+        """Clear the queue.
+        
+        Args:
+            speaker_name: Speaker name.
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            await asyncio.to_thread(device.clear_queue)
+            return True
+        except Exception as e:
+            logger.error("Failed to clear queue on %s: %s", speaker_name, e)
+            return False
+    
+    async def remove_from_queue(self, speaker_name: str, position: int) -> bool:
+        """Remove a track from the queue.
+        
+        Args:
+            speaker_name: Speaker name.
+            position: Track position (0-based index).
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            await asyncio.to_thread(device.remove_from_queue, position)
+            return True
+        except Exception as e:
+            logger.error("Failed to remove from queue on %s: %s", speaker_name, e)
+            return False
+    
+    async def add_uri_to_queue(self, speaker_name: str, uri: str) -> bool:
+        """Add a URI to the queue.
+        
+        Args:
+            speaker_name: Speaker name.
+            uri: URI to add.
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            await asyncio.to_thread(device.add_uri_to_queue, uri)
+            return True
+        except Exception as e:
+            logger.error("Failed to add to queue on %s: %s", speaker_name, e)
+            return False
+    
+    async def add_favorite_to_queue(self, speaker_name: str, favorite_name: str) -> int | None:
+        """Add a favorite to the queue.
+        
+        Args:
+            speaker_name: Speaker name.
+            favorite_name: Name of the favorite to add.
+            
+        Returns:
+            Queue position of added item, or None if failed.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return None
+        
+        try:
+            favorites = await asyncio.to_thread(device.music_library.get_sonos_favorites)
+            for fav in favorites:
+                if fav.title.lower() == favorite_name.lower():
+                    result = await asyncio.to_thread(device.add_to_queue, fav)
+                    return result
+            logger.error("Favorite '%s' not found", favorite_name)
+            return None
+        except Exception as e:
+            logger.error("Failed to add favorite to queue on %s: %s", speaker_name, e)
+            return None
+    
+    async def add_playlist_to_queue(self, speaker_name: str, playlist_name: str) -> int | None:
+        """Add a Sonos playlist to the queue.
+        
+        Args:
+            speaker_name: Speaker name.
+            playlist_name: Name of the playlist to add.
+            
+        Returns:
+            Queue position of first added item, or None if failed.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return None
+        
+        try:
+            playlists = await asyncio.to_thread(device.get_sonos_playlists)
+            for pl in playlists:
+                if pl.title.lower() == playlist_name.lower():
+                    result = await asyncio.to_thread(device.add_to_queue, pl)
+                    return result
+            logger.error("Playlist '%s' not found", playlist_name)
+            return None
+        except Exception as e:
+            logger.error("Failed to add playlist to queue on %s: %s", speaker_name, e)
+            return None
+    
+    async def play_radio_station(self, speaker_name: str, station_name: str) -> bool:
+        """Play a radio station.
+        
+        Args:
+            speaker_name: Speaker name.
+            station_name: Name of the radio station.
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            stations = await asyncio.to_thread(device.get_favorite_radio_stations)
+            for station in stations:
+                if station.title.lower() == station_name.lower():
+                    uri = station.resources[0].uri if station.resources else None
+                    if uri:
+                        await asyncio.to_thread(device.play_uri, uri)
+                        return True
+            logger.error("Radio station '%s' not found", station_name)
+            return False
+        except Exception as e:
+            logger.error("Failed to play radio station on %s: %s", speaker_name, e)
+            return False
+    
+    async def get_playlists(self, speaker_name: str | None = None) -> list[ListItem]:
+        """Get list of Sonos playlists.
+        
+        Args:
+            speaker_name: Any speaker name (optional).
+            
+        Returns:
+            List of ListItem models.
+        """
+        device = None
+        if speaker_name:
+            device = self._get_speaker(speaker_name)
+        if not device:
+            # Try any speaker
+            device = await asyncio.to_thread(self._get_any_coordinator)
+            if not device:
+                return []
+        
+        try:
+            playlists = await asyncio.to_thread(device.get_sonos_playlists)
+            return [ListItem(number=i + 1, name=p.title) for i, p in enumerate(playlists)]
+        except Exception as e:
+            logger.error("Failed to get playlists: %s", e)
+            return []
+    
+    async def get_playlist_tracks(self, playlist_name: str, speaker_name: str | None = None) -> list[ListItem]:
+        """Get tracks in a Sonos playlist.
+        
+        Args:
+            playlist_name: Name of the playlist.
+            speaker_name: Any speaker name (optional).
+            
+        Returns:
+            List of ListItem models with track names.
+        """
+        device = None
+        if speaker_name:
+            device = self._get_speaker(speaker_name)
+        if not device:
+            device = await asyncio.to_thread(self._get_any_coordinator)
+            if not device:
+                return []
+        
+        try:
+            playlists = await asyncio.to_thread(device.get_sonos_playlists)
+            for pl in playlists:
+                if pl.title.lower() == playlist_name.lower():
+                    # Get the playlist tracks using browse
+                    def get_tracks():
+                        return device.music_library.browse(pl)
+                    
+                    items = await asyncio.to_thread(get_tracks)
+                    return [ListItem(number=i + 1, name=item.title) for i, item in enumerate(items)]
+            logger.error("Playlist '%s' not found", playlist_name)
+            return []
+        except Exception as e:
+            logger.error("Failed to get playlist tracks: %s", e)
+            return []
+    
+    async def get_radio_stations(self, speaker_name: str | None = None) -> list[ListItem]:
+        """Get list of favorite radio stations.
+        
+        Args:
+            speaker_name: Any speaker name (optional).
+            
+        Returns:
+            List of ListItem models.
+        """
+        device = None
+        if speaker_name:
+            device = self._get_speaker(speaker_name)
+        if not device:
+            device = await asyncio.to_thread(self._get_any_coordinator)
+            if not device:
+                return []
+        
+        try:
+            stations = await asyncio.to_thread(device.get_favorite_radio_stations)
+            return [ListItem(number=i + 1, name=s.title) for i, s in enumerate(stations)]
+        except Exception as e:
+            logger.error("Failed to get radio stations: %s", e)
+            return []
+    
+    async def play_uri(self, speaker_name: str, uri: str) -> bool:
+        """Play a URI.
+        
+        Args:
+            speaker_name: Speaker name.
+            uri: URI to play.
+            
+        Returns:
+            True if successful.
+        """
+        device = self._get_speaker(speaker_name)
+        if not device:
+            return False
+        
+        try:
+            await asyncio.to_thread(device.play_uri, uri)
+            return True
+        except Exception as e:
+            logger.error("Failed to play URI on %s: %s", speaker_name, e)
             return False

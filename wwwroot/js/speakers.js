@@ -234,7 +234,7 @@ window.speakers = {
     },
 
     /**
-     * Updates all speakers sequentially to avoid overwhelming the API
+     * Updates all speakers in parallel for faster refresh
      */
     async updateAllSpeakers() {
         if (this.isPolling || this.currentSpeakers.length === 0) {
@@ -244,14 +244,16 @@ window.speakers = {
         this.isPolling = true;
         let hasError = false;
 
-        for (const name of this.currentSpeakers) {
-            try {
-                await this.updateSpeakerInfo(name);
-            } catch (error) {
-                hasError = true;
+        // Update speakers in parallel for faster refresh
+        const updatePromises = this.currentSpeakers.map(name =>
+            this.updateSpeakerInfo(name).catch(error => {
                 console.debug(`Failed to update speaker ${name}:`, error.message);
-            }
-        }
+                return { error: true };
+            })
+        );
+        
+        const results = await Promise.all(updatePromises);
+        hasError = results.some(r => r?.error);
 
         // Update group info after updating speakers
         await this.updateGroupInfo();
@@ -445,10 +447,33 @@ window.speakers = {
      * Play/Pause toggle
      */
     async playPause(speakerName) {
+        const card = document.getElementById(`speaker-${speakerName.replace(/\s/g, '-')}`);
+        const playPauseBtn = card?.querySelector('.control-btn.primary');
+        const status = card?.querySelector('.speaker-status');
+        
+        // Optimistically update UI immediately
+        const isPlaying = playPauseBtn?.textContent === '⏸';
+        if (playPauseBtn) {
+            playPauseBtn.textContent = isPlaying ? '▶' : '⏸';
+        }
+        if (status) {
+            status.textContent = isPlaying ? 'Stopped' : 'Playing';
+            status.className = `speaker-status ${isPlaying ? 'stopped' : 'playing'}`;
+        }
+        
         try {
             await api.playPause(speakerName);
-            setTimeout(() => this.updateSpeakerInfo(speakerName), 500);
+            // Refresh after a short delay to get accurate state
+            setTimeout(() => this.updateSpeakerInfo(speakerName), 300);
         } catch (error) {
+            // Revert on error
+            if (playPauseBtn) {
+                playPauseBtn.textContent = isPlaying ? '⏸' : '▶';
+            }
+            if (status) {
+                status.textContent = isPlaying ? 'Playing' : 'Stopped';
+                status.className = `speaker-status ${isPlaying ? 'playing' : 'stopped'}`;
+            }
             showToast('Failed to toggle playback', 'error');
         }
     },
@@ -457,10 +482,12 @@ window.speakers = {
      * Next track
      */
     async next(speakerName) {
+        // Show immediate feedback
+        showToast('Skipping to next track...', 'info');
         try {
             await api.next(speakerName);
-            setTimeout(() => this.updateSpeakerInfo(speakerName), 500);
-            showToast('Next track', 'success');
+            // Refresh after a short delay to get new track info
+            setTimeout(() => this.updateSpeakerInfo(speakerName), 300);
         } catch (error) {
             showToast('Failed to skip track', 'error');
         }
@@ -470,10 +497,12 @@ window.speakers = {
      * Previous track
      */
     async previous(speakerName) {
+        // Show immediate feedback
+        showToast('Going to previous track...', 'info');
         try {
             await api.previous(speakerName);
-            setTimeout(() => this.updateSpeakerInfo(speakerName), 500);
-            showToast('Previous track', 'success');
+            // Refresh after a short delay to get new track info
+            setTimeout(() => this.updateSpeakerInfo(speakerName), 300);
         } catch (error) {
             showToast('Failed to go to previous track', 'error');
         }
@@ -520,11 +549,26 @@ window.speakers = {
      * Toggle mute
      */
     async toggleMute(speakerName) {
+        const card = document.getElementById(`speaker-${speakerName.replace(/\s/g, '-')}`);
+        const muteBtn = card?.querySelector('[data-action="mute"]');
+        
+        // Optimistically toggle the button appearance
+        const wasMuted = muteBtn?.classList.contains('muted');
+        if (muteBtn) {
+            muteBtn.classList.toggle('muted');
+            muteBtn.textContent = wasMuted ? '◖' : '🔇';
+        }
+        
         try {
             await api.toggleMute(speakerName);
-            setTimeout(() => this.updateSpeakerInfo(speakerName), 500);
-            showToast('Mute toggled', 'success');
+            // Refresh after a short delay to confirm state
+            setTimeout(() => this.updateSpeakerInfo(speakerName), 300);
         } catch (error) {
+            // Revert on error
+            if (muteBtn) {
+                muteBtn.classList.toggle('muted');
+                muteBtn.textContent = wasMuted ? '🔇' : '◖';
+            }
             showToast('Failed to toggle mute', 'error');
         }
     },
@@ -777,23 +821,23 @@ window.speakers = {
      * Toggle shuffle mode
      */
     async toggleShuffle(speakerName) {
+        const escaped = (window.CSS && typeof window.CSS.escape === 'function')
+            ? window.CSS.escape(String(speakerName))
+            : String(speakerName);
+        const card = document.querySelector(`.speaker-card[data-speaker="${escaped}"]`);
+        const btn = card?.querySelector('[data-control="shuffle"]');
+        
+        // Optimistically toggle state
+        const wasActive = btn?.classList.contains('active');
+        const newState = wasActive ? 'off' : 'on';
+        btn?.classList.toggle('active', !wasActive);
+        
         try {
-            const current = await api.getShuffle(speakerName);
-            const newState = current.shuffle ? 'off' : 'on';
             await api.setShuffle(speakerName, newState);
-            
-            // Update button state
-            const escaped = (window.CSS && typeof window.CSS.escape === 'function')
-                ? window.CSS.escape(String(speakerName))
-                : String(speakerName);
-            const card = document.querySelector(`.speaker-card[data-speaker="${escaped}"]`);
-            if (card) {
-                const btn = card.querySelector('[data-control="shuffle"]');
-                btn?.classList.toggle('active', newState === 'on');
-            }
-            
             showToast(`Shuffle ${newState}`, 'success');
         } catch (error) {
+            // Revert on error
+            btn?.classList.toggle('active', wasActive);
             showToast('Failed to toggle shuffle', 'error');
         }
     },
@@ -802,30 +846,41 @@ window.speakers = {
      * Cycle through repeat modes (off -> one -> all -> off)
      */
     async cycleRepeat(speakerName) {
+        const escaped = (window.CSS && typeof window.CSS.escape === 'function')
+            ? window.CSS.escape(String(speakerName))
+            : String(speakerName);
+        const card = document.querySelector(`.speaker-card[data-speaker="${escaped}"]`);
+        const btn = card?.querySelector('[data-control="repeat"]');
+        const icon = btn?.querySelector('.repeat-icon');
+        
+        // Determine current mode from UI state
+        const isActive = btn?.classList.contains('active');
+        const isRepeatOne = icon?.textContent === '⟳₁';
+        
+        // Cycle: off -> one -> all -> off
+        let currentMode = 'off';
+        if (isActive && isRepeatOne) currentMode = 'one';
+        else if (isActive) currentMode = 'all';
+        
+        const modes = ['off', 'one', 'all'];
+        const currentIndex = modes.indexOf(currentMode);
+        const nextMode = modes[(currentIndex + 1) % modes.length];
+        
+        // Optimistically update UI
+        btn?.classList.toggle('active', nextMode !== 'off');
+        if (icon) {
+            icon.textContent = nextMode === 'one' ? '⟳₁' : '⟳';
+        }
+        
         try {
-            const current = await api.getRepeat(speakerName);
-            const modes = ['off', 'one', 'all'];
-            const currentIndex = modes.indexOf(current.repeat?.toLowerCase() || 'off');
-            const nextMode = modes[(currentIndex + 1) % modes.length];
-            
             await api.setRepeat(speakerName, nextMode);
-            
-            // Update button state
-            const escaped = (window.CSS && typeof window.CSS.escape === 'function')
-                ? window.CSS.escape(String(speakerName))
-                : String(speakerName);
-            const card = document.querySelector(`.speaker-card[data-speaker="${escaped}"]`);
-            if (card) {
-                const btn = card.querySelector('[data-control="repeat"]');
-                btn?.classList.toggle('active', nextMode !== 'off');
-                const icon = btn?.querySelector('.repeat-icon');
-                if (icon) {
-                    icon.textContent = nextMode === 'one' ? '⟳₁' : '⟳';
-                }
-            }
-            
             showToast(`Repeat: ${nextMode}`, 'success');
         } catch (error) {
+            // Revert on error
+            btn?.classList.toggle('active', currentMode !== 'off');
+            if (icon) {
+                icon.textContent = currentMode === 'one' ? '⟳₁' : '⟳';
+            }
             showToast('Failed to change repeat mode', 'error');
         }
     },

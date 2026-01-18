@@ -61,7 +61,7 @@
 ## Raspberry Pi Specifics
 - Application runs entirely on the local device
 - Frontend served via FastAPI/Starlette static file middleware
-- Backend API runs on Uvicorn (port 5000)
+- Backend API runs on Uvicorn (port 8000 dev, port 80 prod)
 - Caddy reverse proxy for HTTPS termination
 - Use systemd service for auto-start on boot
 

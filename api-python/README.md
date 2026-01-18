@@ -28,7 +28,7 @@ python -m uvicorn sndctl.main:app --host 0.0.0.0 --port 8000
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SNDCTL_HOST` | `127.0.0.1` | Host to bind to |
-| `SNDCTL_PORT` | `5000` | Port to bind to |
+| `SNDCTL_PORT` | `8000` | Port to bind to |
 | `SNDCTL_DEBUG` | `false` | Enable debug mode |
 | `SNDCTL_DATA_DIRECTORY` | `data` | Path to data directory (macros, etc.) |
 | `SNDCTL_WWWROOT_PATH` | `../wwwroot` | Path to static web files |

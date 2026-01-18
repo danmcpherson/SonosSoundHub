@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     
     # Server settings
     host: str = "127.0.0.1"
-    port: int = 5000
+    port: int = 8000
     debug: bool = False
     
     # Data directory for macros, etc.

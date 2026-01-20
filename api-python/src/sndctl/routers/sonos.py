@@ -319,15 +319,16 @@ async def get_sleep_timer(speaker_name: str) -> dict:
 @router.post("/speakers/{speaker_name}/sleep/{duration}")
 async def set_sleep_timer(speaker_name: str, duration: str) -> dict:
     """Set sleep timer using SoCo library."""
-    # Parse duration - could be minutes or HH:MM:SS
+    # Parse duration - could be minutes (with optional 'm' suffix) or HH:MM:SS
     try:
         if ":" in duration:
             # Parse HH:MM:SS format
             parts = duration.split(":")
             seconds = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
         else:
-            # Assume minutes
-            seconds = int(duration) * 60
+            # Strip optional 'm' suffix and assume minutes
+            duration_clean = duration.rstrip("m")
+            seconds = int(duration_clean) * 60
     except (ValueError, IndexError):
         raise HTTPException(status_code=400, detail="Invalid duration format")
     

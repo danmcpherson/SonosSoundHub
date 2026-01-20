@@ -261,6 +261,25 @@ class SoCoService:
         
         return info
     
+    def _get_playback_device(self, device: SoCo) -> SoCo:
+        """Get the playback device (coordinator) for transport operations.
+        
+        Transport operations (play, pause, next, previous, etc.) must be
+        executed on the group coordinator, not on member speakers.
+        
+        Args:
+            device: The SoCo device instance.
+            
+        Returns:
+            The coordinator if grouped, otherwise the device itself.
+        """
+        try:
+            if device.group and not device.is_coordinator:
+                return device.group.coordinator
+        except Exception:
+            pass  # If we can't get group info, use the device itself
+        return device
+    
     async def get_playback_state(self, speaker_name: str) -> str:
         """Get just the playback state (fast, minimal UPnP calls).
         
@@ -288,60 +307,90 @@ class SoCoService:
             return "UNKNOWN"
     
     async def play(self, speaker_name: str) -> bool:
-        """Start playback on a speaker."""
+        """Start playback on a speaker.
+        
+        Uses the group coordinator for grouped speakers.
+        """
         device = self._get_speaker(speaker_name)
         if not device:
             return False
         try:
-            await asyncio.to_thread(device.play)
+            def _play():
+                playback_device = self._get_playback_device(device)
+                playback_device.play()
+            await asyncio.to_thread(_play)
             return True
         except Exception as e:
             logger.error("Play failed for %s: %s", speaker_name, e)
             return False
     
     async def pause(self, speaker_name: str) -> bool:
-        """Pause playback on a speaker."""
+        """Pause playback on a speaker.
+        
+        Uses the group coordinator for grouped speakers.
+        """
         device = self._get_speaker(speaker_name)
         if not device:
             return False
         try:
-            await asyncio.to_thread(device.pause)
+            def _pause():
+                playback_device = self._get_playback_device(device)
+                playback_device.pause()
+            await asyncio.to_thread(_pause)
             return True
         except Exception as e:
             logger.error("Pause failed for %s: %s", speaker_name, e)
             return False
     
     async def stop(self, speaker_name: str) -> bool:
-        """Stop playback on a speaker."""
+        """Stop playback on a speaker.
+        
+        Uses the group coordinator for grouped speakers.
+        """
         device = self._get_speaker(speaker_name)
         if not device:
             return False
         try:
-            await asyncio.to_thread(device.stop)
+            def _stop():
+                playback_device = self._get_playback_device(device)
+                playback_device.stop()
+            await asyncio.to_thread(_stop)
             return True
         except Exception as e:
             logger.error("Stop failed for %s: %s", speaker_name, e)
             return False
     
     async def next_track(self, speaker_name: str) -> bool:
-        """Skip to next track."""
+        """Skip to next track.
+        
+        Uses the group coordinator for grouped speakers.
+        """
         device = self._get_speaker(speaker_name)
         if not device:
             return False
         try:
-            await asyncio.to_thread(device.next)
+            def _next():
+                playback_device = self._get_playback_device(device)
+                playback_device.next()
+            await asyncio.to_thread(_next)
             return True
         except Exception as e:
             logger.error("Next track failed for %s: %s", speaker_name, e)
             return False
     
     async def previous_track(self, speaker_name: str) -> bool:
-        """Skip to previous track."""
+        """Skip to previous track.
+        
+        Uses the group coordinator for grouped speakers.
+        """
         device = self._get_speaker(speaker_name)
         if not device:
             return False
         try:
-            await asyncio.to_thread(device.previous)
+            def _previous():
+                playback_device = self._get_playback_device(device)
+                playback_device.previous()
+            await asyncio.to_thread(_previous)
             return True
         except Exception as e:
             logger.error("Previous track failed for %s: %s", speaker_name, e)
@@ -528,18 +577,36 @@ class SoCoService:
             return False
     
     def _play_favorite_sync(self, device: SoCo, favorite_name: str) -> bool:
-        """Synchronous helper to play a favorite."""
+        """Synchronous helper to play a favorite.
+        
+        Handles track/album favorites by adding to queue and playing.
+        Container-type favorites (artists, playlists from streaming services)
+        are not currently supported by SoCo and will return False.
+        """
         try:
-            music_library = device.music_library
+            # Use coordinator for playback operations
+            playback_device = self._get_playback_device(device)
+            music_library = playback_device.music_library
             favorites = music_library.get_sonos_favorites()
             
             for fav in favorites:
                 if fav.title.lower() == favorite_name.lower():
-                    # Clear queue and add favorite
-                    device.clear_queue()
-                    device.add_to_queue(fav)
-                    device.play_from_queue(0)
-                    return True
+                    # Check if favorite has resources (track/album type)
+                    if fav.resources:
+                        # Track/album - add to queue and play
+                        playback_device.clear_queue()
+                        playback_device.add_to_queue(fav)
+                        playback_device.play_from_queue(0)
+                        return True
+                    else:
+                        # Container type (artist/playlist from streaming service)
+                        # SoCo does not support playing these directly
+                        logger.warning(
+                            "Favorite '%s' is a container type (artist/playlist) which "
+                            "cannot be played directly. Only track/album favorites are supported.",
+                            favorite_name
+                        )
+                        return False
             
             logger.warning("Favorite not found: %s", favorite_name)
             return False
@@ -550,6 +617,8 @@ class SoCoService:
     
     async def play_favorite_by_number(self, speaker_name: str, number: int) -> bool:
         """Play a Sonos favorite by its number (1-based).
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker to play on.
@@ -563,21 +632,18 @@ class SoCoService:
             return False
         
         try:
-            favorites = await asyncio.to_thread(
-                lambda: device.music_library.get_sonos_favorites()
-            )
-            if number < 1 or number > len(favorites):
-                logger.error("Favorite number %d out of range (1-%d)", number, len(favorites))
-                return False
+            def _play_favorite_by_number():
+                playback_device = self._get_playback_device(device)
+                favorites = playback_device.music_library.get_sonos_favorites()
+                if number < 1 or number > len(favorites):
+                    raise ValueError(f"Favorite number {number} out of range (1-{len(favorites)})")
+                
+                fav = favorites[number - 1]  # Convert 1-based to 0-based
+                playback_device.clear_queue()
+                playback_device.add_to_queue(fav)
+                playback_device.play_from_queue(0)
             
-            fav = favorites[number - 1]  # Convert 1-based to 0-based
-            
-            def play():
-                device.clear_queue()
-                device.add_to_queue(fav)
-                device.play_from_queue(0)
-            
-            await asyncio.to_thread(play)
+            await asyncio.to_thread(_play_favorite_by_number)
             return True
         except Exception as e:
             logger.error("Failed to play favorite #%d: %s", number, e)
@@ -585,6 +651,8 @@ class SoCoService:
     
     async def get_queue(self, speaker_name: str) -> list[QueueItem]:
         """Get the current queue for a speaker.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -597,7 +665,10 @@ class SoCoService:
             return []
         
         try:
-            queue = await asyncio.to_thread(self._get_queue_sync, device)
+            def _get_queue():
+                playback_device = self._get_playback_device(device)
+                return self._get_queue_sync(playback_device)
+            queue = await asyncio.to_thread(_get_queue)
             return queue
         except Exception as e:
             logger.error("Failed to get queue for %s: %s", speaker_name, e)
@@ -792,6 +863,8 @@ class SoCoService:
     async def get_shuffle(self, speaker_name: str) -> bool | None:
         """Get shuffle mode.
         
+        Uses the group coordinator for grouped speakers.
+        
         Args:
             speaker_name: Speaker name.
             
@@ -803,7 +876,10 @@ class SoCoService:
             return None
         
         try:
-            shuffle = await asyncio.to_thread(lambda: device.shuffle)
+            def _get_shuffle():
+                playback_device = self._get_playback_device(device)
+                return playback_device.shuffle
+            shuffle = await asyncio.to_thread(_get_shuffle)
             return shuffle
         except Exception as e:
             logger.error("Failed to get shuffle for %s: %s", speaker_name, e)
@@ -811,6 +887,8 @@ class SoCoService:
     
     async def set_shuffle(self, speaker_name: str, enabled: bool) -> bool:
         """Set shuffle mode.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -824,7 +902,10 @@ class SoCoService:
             return False
         
         try:
-            await asyncio.to_thread(setattr, device, "shuffle", enabled)
+            def _set_shuffle():
+                playback_device = self._get_playback_device(device)
+                playback_device.shuffle = enabled
+            await asyncio.to_thread(_set_shuffle)
             return True
         except Exception as e:
             logger.error("Failed to set shuffle for %s: %s", speaker_name, e)
@@ -832,6 +913,8 @@ class SoCoService:
     
     async def get_repeat(self, speaker_name: str) -> str | None:
         """Get repeat mode.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -844,17 +927,26 @@ class SoCoService:
             return None
         
         try:
-            # SoCo returns 'NONE', 'ONE', or 'ALL'
-            repeat = await asyncio.to_thread(lambda: device.repeat)
-            if repeat == "NONE":
+            def _get_repeat():
+                playback_device = self._get_playback_device(device)
+                # SoCo repeat returns: False (off), True (all), or 'ONE' (one)
+                repeat = playback_device.repeat
+                if repeat is False:
+                    return "off"
+                elif repeat is True:
+                    return "all"
+                elif repeat == "ONE":
+                    return "one"
                 return "off"
-            return repeat.lower()
+            return await asyncio.to_thread(_get_repeat)
         except Exception as e:
             logger.error("Failed to get repeat for %s: %s", speaker_name, e)
             return None
     
     async def set_repeat(self, speaker_name: str, mode: str) -> bool:
         """Set repeat mode.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -868,9 +960,19 @@ class SoCoService:
             return False
         
         try:
-            # Convert to SoCo format
-            soco_mode = {"off": "NONE", "one": "ONE", "all": "ALL"}.get(mode.lower(), "NONE")
-            await asyncio.to_thread(setattr, device, "repeat", soco_mode)
+            def _set_repeat():
+                playback_device = self._get_playback_device(device)
+                # SoCo repeat accepts: False (off), True (all), or 'ONE' (one)
+                mode_lower = mode.lower()
+                if mode_lower == "off":
+                    playback_device.repeat = False
+                elif mode_lower == "all":
+                    playback_device.repeat = True
+                elif mode_lower == "one":
+                    playback_device.repeat = "ONE"
+                else:
+                    playback_device.repeat = False
+            await asyncio.to_thread(_set_repeat)
             return True
         except Exception as e:
             logger.error("Failed to set repeat for %s: %s", speaker_name, e)
@@ -878,6 +980,8 @@ class SoCoService:
     
     async def get_crossfade(self, speaker_name: str) -> bool | None:
         """Get crossfade mode.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -890,7 +994,10 @@ class SoCoService:
             return None
         
         try:
-            crossfade = await asyncio.to_thread(lambda: device.cross_fade)
+            def _get_crossfade():
+                playback_device = self._get_playback_device(device)
+                return playback_device.cross_fade
+            crossfade = await asyncio.to_thread(_get_crossfade)
             return crossfade
         except Exception as e:
             logger.error("Failed to get crossfade for %s: %s", speaker_name, e)
@@ -898,6 +1005,8 @@ class SoCoService:
     
     async def set_crossfade(self, speaker_name: str, enabled: bool) -> bool:
         """Set crossfade mode.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -911,7 +1020,10 @@ class SoCoService:
             return False
         
         try:
-            await asyncio.to_thread(setattr, device, "cross_fade", enabled)
+            def _set_crossfade():
+                playback_device = self._get_playback_device(device)
+                playback_device.cross_fade = enabled
+            await asyncio.to_thread(_set_crossfade)
             return True
         except Exception as e:
             logger.error("Failed to set crossfade for %s: %s", speaker_name, e)
@@ -919,6 +1031,8 @@ class SoCoService:
     
     async def get_sleep_timer(self, speaker_name: str) -> int | None:
         """Get remaining sleep timer in seconds.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -931,7 +1045,10 @@ class SoCoService:
             return None
         
         try:
-            timer = await asyncio.to_thread(device.get_sleep_timer)
+            def _get_sleep_timer():
+                playback_device = self._get_playback_device(device)
+                return playback_device.get_sleep_timer()
+            timer = await asyncio.to_thread(_get_sleep_timer)
             return timer or 0
         except Exception as e:
             logger.error("Failed to get sleep timer for %s: %s", speaker_name, e)
@@ -939,6 +1056,8 @@ class SoCoService:
     
     async def set_sleep_timer(self, speaker_name: str, seconds: int | None) -> bool:
         """Set or cancel sleep timer.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -952,7 +1071,10 @@ class SoCoService:
             return False
         
         try:
-            await asyncio.to_thread(device.set_sleep_timer, seconds)
+            def _set_sleep_timer():
+                playback_device = self._get_playback_device(device)
+                playback_device.set_sleep_timer(seconds)
+            await asyncio.to_thread(_set_sleep_timer)
             return True
         except Exception as e:
             logger.error("Failed to set sleep timer for %s: %s", speaker_name, e)
@@ -960,6 +1082,8 @@ class SoCoService:
     
     async def seek(self, speaker_name: str, position: str) -> bool:
         """Seek to a position in the current track.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -973,7 +1097,10 @@ class SoCoService:
             return False
         
         try:
-            await asyncio.to_thread(device.seek, position)
+            def _seek():
+                playback_device = self._get_playback_device(device)
+                playback_device.seek(position)
+            await asyncio.to_thread(_seek)
             return True
         except Exception as e:
             logger.error("Failed to seek on %s: %s", speaker_name, e)
@@ -986,6 +1113,8 @@ class SoCoService:
     async def get_queue_length(self, speaker_name: str) -> int:
         """Get the number of items in the queue.
         
+        Uses the group coordinator for grouped speakers.
+        
         Args:
             speaker_name: Speaker name.
             
@@ -997,7 +1126,10 @@ class SoCoService:
             return 0
         
         try:
-            length = await asyncio.to_thread(lambda: device.queue_size)
+            def _get_queue_length():
+                playback_device = self._get_playback_device(device)
+                return playback_device.queue_size
+            length = await asyncio.to_thread(_get_queue_length)
             return length or 0
         except Exception as e:
             logger.error("Failed to get queue length for %s: %s", speaker_name, e)
@@ -1005,6 +1137,8 @@ class SoCoService:
     
     async def get_queue_position(self, speaker_name: str) -> int:
         """Get the current position in the queue.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -1017,8 +1151,11 @@ class SoCoService:
             return 0
         
         try:
-            track_info = await asyncio.to_thread(device.get_current_track_info)
-            position = int(track_info.get("playlist_position", 0))
+            def _get_queue_position():
+                playback_device = self._get_playback_device(device)
+                track_info = playback_device.get_current_track_info()
+                return int(track_info.get("playlist_position", 0))
+            position = await asyncio.to_thread(_get_queue_position)
             return position
         except Exception as e:
             logger.error("Failed to get queue position for %s: %s", speaker_name, e)
@@ -1027,6 +1164,8 @@ class SoCoService:
     async def play_from_queue(self, speaker_name: str, position: int) -> bool:
         """Play a specific track from the queue.
         
+        Uses the group coordinator for grouped speakers.
+        
         Args:
             speaker_name: Speaker name.
             position: Track position (0-based index).
@@ -1039,7 +1178,10 @@ class SoCoService:
             return False
         
         try:
-            await asyncio.to_thread(device.play_from_queue, position)
+            def _play_from_queue():
+                playback_device = self._get_playback_device(device)
+                playback_device.play_from_queue(position)
+            await asyncio.to_thread(_play_from_queue)
             return True
         except Exception as e:
             logger.error("Failed to play from queue on %s: %s", speaker_name, e)
@@ -1048,6 +1190,8 @@ class SoCoService:
     async def clear_queue(self, speaker_name: str) -> bool:
         """Clear the queue.
         
+        Uses the group coordinator for grouped speakers.
+        
         Args:
             speaker_name: Speaker name.
             
@@ -1059,7 +1203,10 @@ class SoCoService:
             return False
         
         try:
-            await asyncio.to_thread(device.clear_queue)
+            def _clear_queue():
+                playback_device = self._get_playback_device(device)
+                playback_device.clear_queue()
+            await asyncio.to_thread(_clear_queue)
             return True
         except Exception as e:
             logger.error("Failed to clear queue on %s: %s", speaker_name, e)
@@ -1067,6 +1214,8 @@ class SoCoService:
     
     async def remove_from_queue(self, speaker_name: str, position: int) -> bool:
         """Remove a track from the queue.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -1080,7 +1229,10 @@ class SoCoService:
             return False
         
         try:
-            await asyncio.to_thread(device.remove_from_queue, position)
+            def _remove_from_queue():
+                playback_device = self._get_playback_device(device)
+                playback_device.remove_from_queue(position)
+            await asyncio.to_thread(_remove_from_queue)
             return True
         except Exception as e:
             logger.error("Failed to remove from queue on %s: %s", speaker_name, e)
@@ -1088,6 +1240,8 @@ class SoCoService:
     
     async def add_uri_to_queue(self, speaker_name: str, uri: str) -> bool:
         """Add a URI to the queue.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -1101,7 +1255,10 @@ class SoCoService:
             return False
         
         try:
-            await asyncio.to_thread(device.add_uri_to_queue, uri)
+            def _add_uri_to_queue():
+                playback_device = self._get_playback_device(device)
+                playback_device.add_uri_to_queue(uri)
+            await asyncio.to_thread(_add_uri_to_queue)
             return True
         except Exception as e:
             logger.error("Failed to add to queue on %s: %s", speaker_name, e)
@@ -1109,6 +1266,8 @@ class SoCoService:
     
     async def add_favorite_to_queue(self, speaker_name: str, favorite_name: str) -> int | None:
         """Add a favorite to the queue.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -1122,19 +1281,24 @@ class SoCoService:
             return None
         
         try:
-            favorites = await asyncio.to_thread(device.music_library.get_sonos_favorites)
-            for fav in favorites:
-                if fav.title.lower() == favorite_name.lower():
-                    result = await asyncio.to_thread(device.add_to_queue, fav)
-                    return result
-            logger.error("Favorite '%s' not found", favorite_name)
-            return None
+            def _add_favorite_to_queue():
+                playback_device = self._get_playback_device(device)
+                favorites = playback_device.music_library.get_sonos_favorites()
+                for fav in favorites:
+                    if fav.title.lower() == favorite_name.lower():
+                        return playback_device.add_to_queue(fav)
+                logger.error("Favorite '%s' not found", favorite_name)
+                return None
+            result = await asyncio.to_thread(_add_favorite_to_queue)
+            return result
         except Exception as e:
             logger.error("Failed to add favorite to queue on %s: %s", speaker_name, e)
             return None
     
     async def add_playlist_to_queue(self, speaker_name: str, playlist_name: str) -> int | None:
         """Add a Sonos playlist to the queue.
+        
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -1148,19 +1312,25 @@ class SoCoService:
             return None
         
         try:
-            playlists = await asyncio.to_thread(device.get_sonos_playlists)
-            for pl in playlists:
-                if pl.title.lower() == playlist_name.lower():
-                    result = await asyncio.to_thread(device.add_to_queue, pl)
-                    return result
-            logger.error("Playlist '%s' not found", playlist_name)
-            return None
+            def _add_playlist_to_queue():
+                playback_device = self._get_playback_device(device)
+                playlists = playback_device.get_sonos_playlists()
+                for pl in playlists:
+                    if pl.title.lower() == playlist_name.lower():
+                        return playback_device.add_to_queue(pl)
+                logger.error("Playlist '%s' not found", playlist_name)
+                return None
+            result = await asyncio.to_thread(_add_playlist_to_queue)
+            return result
         except Exception as e:
             logger.error("Failed to add playlist to queue on %s: %s", speaker_name, e)
             return None
     
     async def play_radio_station(self, speaker_name: str, station_name: str) -> bool:
-        """Play a radio station.
+        """Play a radio station from Sonos favorites.
+        
+        Radio stations are stored in Sonos favorites in modern Sonos systems.
+        Uses the group coordinator for grouped speakers.
         
         Args:
             speaker_name: Speaker name.
@@ -1174,15 +1344,29 @@ class SoCoService:
             return False
         
         try:
-            stations = await asyncio.to_thread(device.get_favorite_radio_stations)
-            for station in stations:
-                if station.title.lower() == station_name.lower():
-                    uri = station.resources[0].uri if station.resources else None
-                    if uri:
-                        await asyncio.to_thread(device.play_uri, uri)
-                        return True
-            logger.error("Radio station '%s' not found", station_name)
-            return False
+            def _play_radio_station():
+                playback_device = self._get_playback_device(device)
+                # Radio stations are now stored in Sonos favorites
+                favorites = playback_device.music_library.get_sonos_favorites()
+                for fav in favorites:
+                    if fav.title.lower() == station_name.lower():
+                        # Check if it has resources (playable item)
+                        if fav.resources:
+                            uri = fav.resources[0].uri
+                            meta = fav.resource_meta_data
+                            playback_device.play_uri(uri, meta=meta)
+                            return True
+                        else:
+                            # Try play_uri with just the reference
+                            logger.warning(
+                                "Favorite '%s' has no resources, may not play correctly",
+                                station_name
+                            )
+                            return False
+                logger.error("Radio station '%s' not found in favorites", station_name)
+                return False
+            result = await asyncio.to_thread(_play_radio_station)
+            return result
         except Exception as e:
             logger.error("Failed to play radio station on %s: %s", speaker_name, e)
             return False

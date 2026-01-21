@@ -2,6 +2,26 @@
  * Mobile App Module for Sound Control
  * Optimized for iOS home screen app experience
  */
+
+/**
+ * Debounce function for volume sliders
+ * @param {Function} func - The function to debounce
+ * @param {number} wait - The delay in milliseconds
+ * @returns {Function} The debounced function
+ */
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const context = this;
+        const later = () => {
+            clearTimeout(timeout);
+            func.apply(context, args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
 window.mobileApp = {
     currentTab: 'macros-tab',
     currentView: 'tile',
@@ -676,8 +696,7 @@ window.mobileApp = {
                            min="0" 
                            max="100" 
                            value="${avgVolume}"
-                           oninput="mobileApp.updateGroupVolumeLabel('${this.escapeJs(panel.coordinator)}', this.value)"
-                           onchange="mobileApp.setGroupVolume('${this.escapeJs(panel.coordinator)}', this.value)">
+                           oninput="mobileApp.updateGroupVolumeLabel('${this.escapeJs(panel.coordinator)}', this.value); mobileApp.setGroupVolume('${this.escapeJs(panel.coordinator)}', this.value)">
                     <span class="volume-value" id="group-volume-${this.escapeHtml(panel.coordinator)}">${avgVolume}%</span>
                 </div>
             `;
@@ -703,8 +722,7 @@ window.mobileApp = {
                                min="0" 
                                max="100" 
                                value="${volume}"
-                               oninput="mobileApp.updateVolumeLabel('${this.escapeJs(member)}', this.value)"
-                               onchange="mobileApp.setVolume('${this.escapeJs(member)}', this.value)">
+                               oninput="mobileApp.updateVolumeLabel('${this.escapeJs(member)}', this.value); mobileApp.setVolume('${this.escapeJs(member)}', this.value)">
                         <span class="volume-value" id="volume-${this.escapeHtml(member)}">${volume}%</span>
                     </div>
                 `;
@@ -740,8 +758,7 @@ window.mobileApp = {
                            min="0" 
                            max="100" 
                            value="${volume}"
-                           oninput="mobileApp.updateVolumeLabel('${this.escapeJs(panel.coordinator)}', this.value)"
-                           onchange="mobileApp.setVolume('${this.escapeJs(panel.coordinator)}', this.value)">
+                           oninput="mobileApp.updateVolumeLabel('${this.escapeJs(panel.coordinator)}', this.value); mobileApp.setVolume('${this.escapeJs(panel.coordinator)}', this.value)">
                     <span class="volume-value" id="volume-${this.escapeHtml(panel.coordinator)}">${volume}%</span>
                 </div>
             `;
@@ -884,20 +901,32 @@ window.mobileApp = {
     },
 
     /**
-     * Set volume for a speaker
+     * Set volume for a speaker (debounced for responsiveness during dragging)
      * @param {string} speaker - The speaker name
      * @param {number} volume - The volume level (0-100)
      */
-    async setVolume(speaker, volume) {
-        try {
-            await api.setVolume(speaker, parseInt(volume, 10));
-        } catch (error) {
-            console.error('Failed to set volume:', error);
-            this.showToast('Volume change failed', 'error');
-            // On error, refresh to get the actual value
-            this.updateSpeakerState(speaker);
-        }
-    },
+    setVolume: (function() {
+        const debouncedSetVolume = {};
+        
+        return function(speaker, volume) {
+            // Create a debounced function for each speaker if it doesn't exist
+            if (!debouncedSetVolume[speaker]) {
+                debouncedSetVolume[speaker] = debounce(async (vol) => {
+                    try {
+                        await api.setVolume(speaker, parseInt(vol, 10));
+                    } catch (error) {
+                        console.error('Failed to set volume:', error);
+                        mobileApp.showToast('Volume change failed', 'error');
+                        // On error, refresh to get the actual value
+                        mobileApp.updateSpeakerState(speaker);
+                    }
+                }, 300);
+            }
+            
+            // Call the debounced function
+            debouncedSetVolume[speaker](volume);
+        };
+    })(),
 
     /**
      * Update group volume label during drag (also stores values to prevent jump-back on re-render)
@@ -929,25 +958,37 @@ window.mobileApp = {
     },
 
     /**
-     * Set volume for all speakers in a group
+     * Set volume for all speakers in a group (debounced for responsiveness during dragging)
      * @param {string} coordinator - The group coordinator speaker name
      * @param {number} volume - The volume level (0-100)
      */
-    async setGroupVolume(coordinator, volume) {
-        try {
-            await api.setGroupVolume(coordinator, parseInt(volume, 10));
-            // Update individual volume labels to reflect change
-            const groupInfo = this.speakerGroups[coordinator];
-            if (groupInfo && groupInfo.members) {
-                groupInfo.members.forEach(member => {
-                    this.updateVolumeLabel(member, volume);
-                });
+    setGroupVolume: (function() {
+        const debouncedSetGroupVolume = {};
+        
+        return function(coordinator, volume) {
+            // Create a debounced function for each coordinator if it doesn't exist
+            if (!debouncedSetGroupVolume[coordinator]) {
+                debouncedSetGroupVolume[coordinator] = debounce(async (vol) => {
+                    try {
+                        await api.setGroupVolume(coordinator, parseInt(vol, 10));
+                        // Update individual volume labels to reflect change
+                        const groupInfo = mobileApp.speakerGroups[coordinator];
+                        if (groupInfo && groupInfo.members) {
+                            groupInfo.members.forEach(member => {
+                                mobileApp.updateVolumeLabel(member, vol);
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Failed to set group volume:', error);
+                        mobileApp.showToast('Group volume change failed', 'error');
+                    }
+                }, 300);
             }
-        } catch (error) {
-            console.error('Failed to set group volume:', error);
-            this.showToast('Group volume change failed', 'error');
-        }
-    },
+            
+            // Call the debounced function
+            debouncedSetGroupVolume[coordinator](volume);
+        };
+    })(),
 
     /**
      * Update a single speaker's state

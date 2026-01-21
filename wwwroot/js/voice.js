@@ -22,6 +22,14 @@ window.voiceAssistant = {
     mediaRecorder: null,
     audioQueue: [],
     isPlayingAudio: false,
+    currentAudioSource: null,  // Track current playing audio source
+    lastAssistantItemId: null,  // Track last assistant message for truncation
+    audioPlaybackStartTime: null,  // When audio playback started (ms)
+    totalAudioDuration: 0,  // Total duration of audio played so far (ms)
+    currentAudioSource: null,  // Track current audio being played
+    lastAssistantItemId: null,  // Track last assistant message for truncation
+    audioPlaybackStartTime: null,  // Track when audio playback started
+    audioPlaybackOffset: 0,  // Track how much audio has been played
     
     // Configuration
     sampleRate: 24000,
@@ -595,6 +603,11 @@ window.voiceAssistant = {
         this.isListening = true;
         this.updateState('listening');
         
+        // Reset playback tracking
+        this.audioPlaybackStartTime = null;
+        this.audioPlaybackOffset = 0;
+        this.lastAssistantItemId = null;
+        
         // Configure session with turn detection settings
         this.updateSessionConfig();
         
@@ -673,6 +686,8 @@ window.voiceAssistant = {
                     break;
                     
                 case 'input_audio_buffer.speech_started':
+                    console.log('User started speaking - stopping assistant audio');
+                    this.handleUserInterruption();
                     this.updateState('hearing');
                     this.stopAudioPlayback();
                     // Create a placeholder for the user message that will be filled when transcription completes
@@ -701,8 +716,16 @@ window.voiceAssistant = {
                     }
                     break;
                     
+                case 'response.output_item.added':
+                    // Track assistant items so we can truncate them if interrupted
+                    if (message.item && message.item.role === 'assistant') {
+                        this.lastAssistantItemId = message.item.id;
+                        console.log('Tracking assistant item:', this.lastAssistantItemId);
+                    }
+                    break;
+                    
                 case 'response.audio.delta':
-                    this.handleAudioDelta(message.delta);
+                    this.handleAudioDelta(message.delta, message.response_id, message.item_id);
                     break;
                     
                 case 'response.audio.done':
@@ -738,8 +761,13 @@ window.voiceAssistant = {
     /**
      * Handle audio delta from response
      */
-    handleAudioDelta(base64Audio) {
+    handleAudioDelta(base64Audio, response_id, item_id) {
         if (!base64Audio) return;
+        
+        // Track the latest assistant item for potential truncation
+        if (item_id) {
+            this.lastAssistantItemId = item_id;
+        }
         
         this.isSpeaking = true;
         this.updateState('speaking');
@@ -761,6 +789,8 @@ window.voiceAssistant = {
         if (this.isPlayingAudio || this.audioQueue.length === 0) return;
         
         this.isPlayingAudio = true;
+        this.audioPlaybackStartTime = this.audioContext.currentTime;
+        this.totalAudioDuration = 0;
         
         while (this.audioQueue.length > 0) {
             const audioData = this.audioQueue.shift();
@@ -795,7 +825,16 @@ window.voiceAssistant = {
                 const source = this.audioContext.createBufferSource();
                 source.buffer = audioBuffer;
                 source.connect(this.audioContext.destination);
-                source.onended = resolve;
+                
+                // Track current source and duration
+                this.currentAudioSource = source;
+                const chunkDuration = (float32.length / this.sampleRate) * 1000; // ms
+                
+                source.onended = () => {
+                    this.totalAudioDuration += chunkDuration;
+                    this.currentAudioSource = null;
+                    resolve();
+                };
                 source.start();
             } catch (error) {
                 console.error('Failed to play audio chunk:', error);
@@ -803,14 +842,58 @@ window.voiceAssistant = {
             }
         });
     },
-
+    
     /**
-     * Stop audio playback
+     * Stop audio playback immediately
      */
     stopAudioPlayback() {
+        // Stop current audio source if playing
+        if (this.currentAudioSource) {
+            try {
+                this.currentAudioSource.stop();
+                this.currentAudioSource.disconnect();
+            } catch (e) {
+                // Already stopped
+            }
+            this.currentAudioSource = null;
+        }
+        
+        // Clear the audio queue
         this.audioQueue = [];
         this.isPlayingAudio = false;
         this.isSpeaking = false;
+    },
+    
+    /**
+     * Handle user interruption - truncate assistant's unplayed audio
+     */
+    handleUserInterruption() {
+        // Calculate how much audio was actually played
+        let playedMs = this.totalAudioDuration;
+        
+        // If currently playing, add the partial chunk time
+        if (this.audioPlaybackStartTime && this.audioContext) {
+            const elapsedTime = (this.audioContext.currentTime - this.audioPlaybackStartTime) * 1000;
+            playedMs = Math.floor(elapsedTime);
+        }
+        
+        if (this.lastAssistantItemId && playedMs > 0) {
+            console.log(`Truncating assistant audio at ${playedMs}ms for item ${this.lastAssistantItemId}`);
+            
+            // Send truncate event to remove unplayed audio from conversation
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({
+                    type: 'conversation.item.truncate',
+                    item_id: this.lastAssistantItemId,
+                    content_index: 0,
+                    audio_end_ms: playedMs
+                }));
+            }
+        }
+        
+        // Reset tracking
+        this.audioPlaybackStartTime = null;
+        this.totalAudioDuration = 0;
     },
 
     /**

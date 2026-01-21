@@ -14,6 +14,7 @@ window.voiceAssistant = {
     isListening: false,
     isProcessing: false,
     isSpeaking: false,
+    isAssistantMuted: true,  // Mute assistant by default
     
     // WebSocket and Audio
     ws: null,
@@ -38,6 +39,10 @@ window.voiceAssistant = {
     // Higher values = less sensitive (better for filtering background music)
     turnDetectionThreshold: 0.5, // Default 0.5, range 0.0-1.0
     
+    // Auto-shutoff timer
+    silenceTimeoutId: null,
+    silenceTimeoutDuration: 5000, // 5 seconds of silence before auto-shutoff
+    
     // Detect if running as PWA (standalone mode)
     isPWA: window.matchMedia('(display-mode: standalone)').matches || 
            window.navigator.standalone === true,
@@ -55,6 +60,14 @@ window.voiceAssistant = {
         const voiceSelect = document.getElementById('voice-select');
         if (voiceSelect) {
             voiceSelect.value = this.selectedVoice;
+        }
+        
+        // Load saved assistant mute preference (default to muted)
+        const savedMuteState = localStorage.getItem('voiceAssistant.isAssistantMuted');
+        this.isAssistantMuted = savedMuteState === null ? true : savedMuteState === 'true';
+        const muteToggle = document.getElementById('assistant-mute-toggle');
+        if (muteToggle) {
+            muteToggle.checked = !this.isAssistantMuted; // Checkbox checked = unmuted (enabled)
         }
         
         // Load saved turn detection threshold
@@ -312,6 +325,20 @@ window.voiceAssistant = {
             this.selectedVoice = voiceSelect.value;
             localStorage.setItem('voiceAssistant.voice', this.selectedVoice);
             console.log('Voice preference saved:', this.selectedVoice);
+        }
+    },
+    
+    /**
+     * Toggle assistant mute (voice responses on/off)
+     */
+    toggleAssistantMute(isEnabled) {
+        this.isAssistantMuted = !isEnabled; // Checkbox checked = unmuted (enabled)
+        localStorage.setItem('voiceAssistant.isAssistantMuted', this.isAssistantMuted.toString());
+        console.log('Assistant voice responses:', isEnabled ? 'enabled' : 'disabled');
+        
+        // If muting, stop any currently playing audio
+        if (this.isAssistantMuted && this.isPlayingAudio) {
+            this.stopAudioPlayback();
         }
     },
     
@@ -687,6 +714,7 @@ window.voiceAssistant = {
                     
                 case 'input_audio_buffer.speech_started':
                     console.log('User started speaking - stopping assistant audio');
+                    this.cancelSilenceTimeout(); // Cancel auto-shutoff when user speaks
                     this.handleUserInterruption();
                     this.updateState('hearing');
                     this.stopAudioPlayback();
@@ -697,6 +725,8 @@ window.voiceAssistant = {
                     
                 case 'input_audio_buffer.speech_stopped':
                     this.updateState('processing');
+                    // Start silence timeout - auto-shutoff after 5 seconds of silence
+                    this.startSilenceTimeout();
                     break;
                     
                 case 'conversation.item.input_audio_transcription.completed':
@@ -820,6 +850,11 @@ window.voiceAssistant = {
      * Play a single audio chunk
      */
     async playAudioChunk(arrayBuffer) {
+        // If assistant is muted, skip audio playback but still resolve
+        if (this.isAssistantMuted) {
+            return Promise.resolve();
+        }
+        
         return new Promise((resolve) => {
             try {
                 // Convert raw PCM to audio buffer
@@ -876,16 +911,40 @@ window.voiceAssistant = {
     },
     
     /**
+     * Start timeout to auto-shutoff mic after silence
+     */
+    startSilenceTimeout() {
+        // Clear any existing timeout
+        this.cancelSilenceTimeout();
+        
+        console.log(`Starting silence timeout (${this.silenceTimeoutDuration}ms)`);
+        this.silenceTimeoutId = setTimeout(() => {
+            console.log('Auto-shutoff: 5 seconds of silence detected');
+            this.stopListening();
+        }, this.silenceTimeoutDuration);
+    },
+    
+    /**
+     * Cancel the silence timeout
+     */
+    cancelSilenceTimeout() {
+        if (this.silenceTimeoutId) {
+            clearTimeout(this.silenceTimeoutId);
+            this.silenceTimeoutId = null;
+        }
+    },
+    
+    /**
      * Handle user interruption - truncate assistant's unplayed audio
      */
     handleUserInterruption() {
         // Calculate how much audio was actually played
-        let playedMs = this.totalAudioDuration; // Start with completed chunks
+        // audioPlaybackStartTime is set at the start of the queue, so elapsed time = total played time
+        let playedMs = 0;
         
-        // If currently playing, add the partial chunk time
         if (this.audioPlaybackStartTime && this.audioContext) {
             const elapsedTime = (this.audioContext.currentTime - this.audioPlaybackStartTime) * 1000;
-            playedMs += Math.floor(elapsedTime); // Add current chunk progress
+            playedMs = Math.floor(elapsedTime);
         }
         
         // Only send truncation if we have a meaningful amount of audio played (> 100ms)
@@ -1466,6 +1525,7 @@ window.voiceAssistant = {
     async stopListening() {
         console.log('stopListening called');
         this.isListening = false;
+        this.cancelSilenceTimeout(); // Clear any pending auto-shutoff
         
         // Close WebSocket
         if (this.ws) {

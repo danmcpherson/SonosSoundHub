@@ -256,6 +256,16 @@
                             <button class="voice-settings-close" onclick="voiceAssistant.toggleSettings()">×</button>
                         </div>
                         <div class="voice-settings-content">
+                            <label for="assistant-mute-toggle">
+                                <div style="display: flex; align-items: center; justify-content: space-between;">
+                                    <span>Assistant Voice Responses</span>
+                                    <input type="checkbox" id="assistant-mute-toggle" 
+                                           onchange="voiceAssistant.toggleAssistantMute(this.checked)" 
+                                           style="width: auto; margin: 0;">
+                                </div>
+                                <span class="settings-help-text">When unchecked, you'll only see text responses</span>
+                            </label>
+                            
                             <label for="voice-select">AI Voice</label>
                             <select id="voice-select" class="voice-select" onchange="voiceAssistant.saveVoicePreference()">
                                 <option value="verse">Verse (default)</option>
